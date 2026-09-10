@@ -1,17 +1,23 @@
-import { Body, Controller, Delete, Get, Param, Post, Put, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Post, Put, Query, ServiceUnavailableException, UseGuards } from "@nestjs/common";
 import { createHash } from "node:crypto";
 import { GalleryInputSchema, StatsSchema, SubscriberInputSchema } from "@tpb/contracts";
 import { PrismaService } from "../prisma.service";
 import { JwtAuthGuard, Roles, RolesGuard } from "../auth";
 import { parse } from "../zod";
+import { parsePagination, paginationMeta } from "../pagination";
 
 @Controller()
 export class PublicController {
   constructor(private readonly prisma: PrismaService) {}
 
   @Get("health")
-  health() {
-    return { ok: true };
+  async health() {
+    try {
+      await this.prisma.$queryRaw`SELECT 1`;
+      return { ok: true, database: "up" };
+    } catch {
+      throw new ServiceUnavailableException({ ok: false, database: "down" });
+    }
   }
 
   // ---------------------------------------------------------------- stats
@@ -51,19 +57,32 @@ export class PublicController {
   @Get("subscribers")
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles("ADMIN", "OPERATOR")
-  async listSubscribers() {
-    const rows = await this.prisma.subscriber.findMany({ orderBy: { subscribedAt: "desc" } });
+  async listSubscribers(@Query() query: Record<string, unknown>) {
+    const pagination = parsePagination(query);
+    const where = {};
+    const [rows, total] = await Promise.all([
+      this.prisma.subscriber.findMany({ orderBy: [{ subscribedAt: "desc" }, { id: "desc" }], skip: pagination.offset, take: pagination.limit }),
+      this.prisma.subscriber.count({ where }),
+    ]);
     return {
       subscribers: rows.map((r) => ({ id: r.id, email: r.email, subscribedAt: r.subscribedAt.toISOString() })),
+      pagination: paginationMeta(pagination, total),
     };
   }
 
   // -------------------------------------------------------------- gallery
 
   @Get("gallery")
-  async listGallery() {
-    const rows = await this.prisma.galleryItem.findMany({ orderBy: { createdAt: "desc" } });
-    return { gallery: rows.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() })) };
+  async listGallery(@Query() query: Record<string, unknown>) {
+    const pagination = parsePagination(query);
+    const [rows, total] = await Promise.all([
+      this.prisma.galleryItem.findMany({ orderBy: [{ createdAt: "desc" }, { id: "desc" }], skip: pagination.offset, take: pagination.limit }),
+      this.prisma.galleryItem.count(),
+    ]);
+    return {
+      gallery: rows.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() })),
+      pagination: paginationMeta(pagination, total),
+    };
   }
 
   @Post("gallery")

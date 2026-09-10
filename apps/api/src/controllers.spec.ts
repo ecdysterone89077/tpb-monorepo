@@ -44,19 +44,21 @@ describe("controller behavior with mocked Prisma", () => {
   });
 
   it("posts list publik hanya meminta post published yang belum dihapus", async () => {
-    const prisma = { post: { findMany: jest.fn().mockResolvedValue([]) } };
+    const prisma = { post: { findMany: jest.fn().mockResolvedValue([]), count: jest.fn().mockResolvedValue(0) } };
     const jwt = { verify: jest.fn().mockReturnValue({ id: "u1", role: "EDITOR" }) };
     const controller = new PostsController(prisma as any, jwt as any);
-    await controller.list(undefined as any, { user: undefined } as any);
+    await controller.list(undefined as any, {}, { user: undefined } as any);
     expect(prisma.post.findMany).toHaveBeenCalledWith({
       where: { deletedAt: null, status: "published" },
-      orderBy: { date: "desc" },
+      orderBy: [{ date: "desc" }, { id: "desc" }],
+      skip: 0,
+      take: 50,
     });
   });
 
   it("posts all tanpa user ditolak", async () => {
-    const controller = new PostsController({ post: { findMany: jest.fn() } } as any, { verify: jest.fn() } as any);
-    await expect(controller.list("1", { user: undefined } as any)).rejects.toThrow(UnauthorizedException);
+    const controller = new PostsController({ post: { findMany: jest.fn(), count: jest.fn() }, user: { findUnique: jest.fn() } } as any, { verify: jest.fn() } as any);
+    await expect(controller.list("1", {}, { user: undefined } as any)).rejects.toThrow(UnauthorizedException);
   });
 
   it("schema post menolak tanggal invalid dan parse memberi BadRequestException", () => {

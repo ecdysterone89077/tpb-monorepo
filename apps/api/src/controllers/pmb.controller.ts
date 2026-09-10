@@ -3,6 +3,7 @@ import { PmbInputSchema, PmbStatusSchema } from "@tpb/contracts";
 import { PrismaService } from "../prisma.service";
 import { JwtAuthGuard, Roles, RolesGuard } from "../auth";
 import { parse } from "../zod";
+import { parsePagination, paginationMeta } from "../pagination";
 
 @Controller("pmb")
 export class PmbController {
@@ -33,9 +34,14 @@ export class PmbController {
   @Get()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles("ADMIN", "OPERATOR")
-  async list(@Query("all") all?: string) {
-    const registrations = await this.prisma.pmbRegistration.findMany({ where: all === "1" ? {} : { deletedAt: null }, orderBy: { createdAt: "desc" } });
-    return { registrations };
+  async list(@Query("all") all?: string, @Query() query: Record<string, unknown> = {}) {
+    const pagination = parsePagination(query);
+    const where = all === "1" ? {} : { deletedAt: null };
+    const [registrations, total] = await Promise.all([
+      this.prisma.pmbRegistration.findMany({ where, orderBy: [{ createdAt: "desc" }, { id: "desc" }], skip: pagination.offset, take: pagination.limit }),
+      this.prisma.pmbRegistration.count({ where }),
+    ]);
+    return { registrations, pagination: paginationMeta(pagination, total) };
   }
 
   @Put(":id/status")

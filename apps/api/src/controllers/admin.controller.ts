@@ -1,19 +1,22 @@
-import { Body, Controller, Delete, Get, Param, Post, Put, Req, UploadedFile, UseGuards, UseInterceptors } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Post, Put, Query, Req, UploadedFile, UseGuards, UseInterceptors } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
 import { hash } from "@node-rs/argon2";
 import { diskStorage } from "multer";
-import { extname } from "node:path";
+import { extname, resolve } from "node:path";
+import { mkdirSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import type { Request } from "express";
 import { UserInputSchema, UserUpdateSchema } from "@tpb/contracts";
 import { PrismaService } from "../prisma.service";
 import { JwtAuthGuard, Roles, RolesGuard, type RequestUser } from "../auth";
 import { parse } from "../zod";
+import { parsePagination, paginationMeta } from "../pagination";
 
 type AuthRequest = Request & { user?: RequestUser };
 
-const MEDIA_DIR = process.env.MEDIA_DIR || "uploads";
+const MEDIA_DIR = resolve(process.env.MEDIA_DIR || "uploads");
 const MEDIA_MAX_MB = Number(process.env.MEDIA_MAX_MB || 10);
+mkdirSync(MEDIA_DIR, { recursive: true });
 
 @Controller()
 export class AdminController {
@@ -24,13 +27,18 @@ export class AdminController {
   @Get("users")
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles("ADMIN")
-  async listUsers() {
-    const rows = await this.prisma.user.findMany({ orderBy: { createdAt: "asc" } });
+  async listUsers(@Query() query: Record<string, unknown>) {
+    const pagination = parsePagination(query);
+    const [rows, total] = await Promise.all([
+      this.prisma.user.findMany({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], skip: pagination.offset, take: pagination.limit }),
+      this.prisma.user.count(),
+    ]);
     return {
       users: rows.map((r) => ({
         id: r.id, email: r.email, name: r.name, role: r.role, isActive: r.isActive,
         createdAt: r.createdAt.toISOString(), lastLoginAt: r.lastLoginAt?.toISOString() ?? null,
       })),
+      pagination: paginationMeta(pagination, total),
     };
   }
 
@@ -72,13 +80,18 @@ export class AdminController {
   @Get("audit")
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles("ADMIN")
-  async listAudit() {
-    const rows = await this.prisma.auditLog.findMany({ orderBy: { createdAt: "desc" }, take: 200, include: { user: { select: { email: true } } } });
+  async listAudit(@Query() query: Record<string, unknown>) {
+    const pagination = parsePagination(query);
+    const [rows, total] = await Promise.all([
+      this.prisma.auditLog.findMany({ orderBy: [{ createdAt: "desc" }, { id: "desc" }], skip: pagination.offset, take: pagination.limit, include: { user: { select: { email: true } } } }),
+      this.prisma.auditLog.count(),
+    ]);
     return {
       audit: rows.map((r) => ({
         id: r.id, userId: r.userId, action: r.action, entity: r.entity, entityId: r.entityId,
         metadata: r.metadata, ip: r.ip, createdAt: r.createdAt.toISOString(), user: r.user ? { email: r.user.email } : null,
       })),
+      pagination: paginationMeta(pagination, total),
     };
   }
 
@@ -133,8 +146,12 @@ export class AdminController {
   @Get("media")
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles("ADMIN", "EDITOR", "OPERATOR")
-  async listMedia() {
-    const rows = await this.prisma.mediaAsset.findMany({ orderBy: { createdAt: "desc" } });
-    return { media: rows.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() })) };
+  async listMedia(@Query() query: Record<string, unknown>) {
+    const pagination = parsePagination(query);
+    const [rows, total] = await Promise.all([
+      this.prisma.mediaAsset.findMany({ orderBy: [{ createdAt: "desc" }, { id: "desc" }], skip: pagination.offset, take: pagination.limit }),
+      this.prisma.mediaAsset.count(),
+    ]);
+    return { media: rows.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() })), pagination: paginationMeta(pagination, total) };
   }
 }

@@ -261,9 +261,43 @@ export const StatsSchema = z.object({
     .max(100),
 });
 
-export const ContentSchema = z.object({
-  content: z.unknown().nullable(),
+const UrlOrPath = z.string().trim().min(1).max(2000);
+const NavChildSchema = z.object({ label: z.string().trim().min(1).max(160), href: z.string().trim().min(1).max(2000) });
+const NavItemSchema = z.object({ label: z.string().trim().min(1).max(160), href: z.string().trim().min(1).max(2000), children: z.array(NavChildSchema).max(30).optional() });
+const KickerTitleSchema = z.object({ kicker: z.string().max(300), title: z.string().max(500) });
+const TextListSchema = z.array(z.string().max(500)).max(100);
+const MetricSchema = z.object({ v: z.string().max(100), l: z.string().max(200) });
+
+export const SiteContentSchema = z.object({
+  navigation: z.array(NavItemSchema).max(30),
+  brand: z.object({ kicker: z.string().max(160), name: z.string().max(220), org: z.string().max(220), logoUrl: UrlOrPath }),
+  pmbLink: z.string().max(2000),
+  hero: z.object({ badge: z.string().max(300), line1: z.string().max(300), highlight: z.string().max(300), line2: z.string().max(300), subtitle: z.string().max(2000), primaryLabel: z.string().max(160), primaryHref: z.string().max(2000), secondaryLabel: z.string().max(160), image: UrlOrPath }),
+  marquee: TextListSchema,
+  stats: z.array(z.object({ value: z.number().int().min(0).max(1000000000), suffix: z.string().max(20), label: z.string().max(160) })).max(100),
+  about: z.object({ kicker: z.string().max(300), title: z.string().max(500), body: z.string().max(5000), sinceYear: z.string().max(20), sinceNote: z.string().max(500), image: UrlOrPath, points: TextListSchema }),
+  programs: z.object({ kicker: z.string().max(300), title: z.string().max(500), cta: z.string().max(160), cards: z.array(z.object({ tag: z.string().max(160), title: z.string().max(300), body: z.string().max(2000), img: UrlOrPath, color: z.string().max(80) })).max(50) }),
+  research: z.object({ kicker: z.string().max(300), title: z.string().max(500), body: z.string().max(5000), areas: z.array(z.object({ no: z.string().max(20), title: z.string().max(300), body: z.string().max(2000) })).max(50), metrics: z.array(MetricSchema).max(50) }),
+  community: z.object({ kicker: z.string().max(300), title: z.string().max(500), body: z.string().max(5000), image: UrlOrPath, items: TextListSchema }),
+  studentLife: z.object({ kicker: z.string().max(300), title: z.string().max(500), cta: z.string().max(160), cards: z.array(z.object({ tag: z.string().max(160), title: z.string().max(300), body: z.string().max(2000) })).max(50) }),
+  profil: z.object({ sejarah: z.object({ kicker: z.string().max(300), title: z.string().max(500), intro: z.string().max(5000), timeline: z.array(z.object({ year: z.string().max(40), text: z.string().max(2000) })).max(100) }), visiMisi: z.object({ kicker: z.string().max(300), title: z.string().max(500), visi: z.string().max(3000), misi: TextListSchema }), struktur: z.object({ kicker: z.string().max(300), title: z.string().max(500), people: z.array(z.object({ role: z.string().max(200), name: z.string().max(200) })).max(100) }), sambutan: z.object({ kicker: z.string().max(300), title: z.string().max(500), image: UrlOrPath, quote: z.string().max(5000), name: z.string().max(200), role: z.string().max(200) }) }),
+  akademik: z.object({ kurikulum: z.object({ kicker: z.string().max(300), title: z.string().max(500), intro: z.string().max(5000), sks: z.array(MetricSchema).max(50), clusters: TextListSchema }), kalender: z.object({ kicker: z.string().max(300), title: z.string().max(500), items: z.array(z.object({ d: z.string().max(100), e: z.string().max(2000) })).max(100) }), dosen: z.object({ kicker: z.string().max(300), title: z.string().max(500), intro: z.string().max(5000), people: z.array(z.object({ name: z.string().max(200), field: z.string().max(300) })).max(100) }), laboratorium: z.object({ kicker: z.string().max(300), title: z.string().max(500), labs: z.array(z.object({ name: z.string().max(300), desc: z.string().max(2000) })).max(100) }) }),
+  penelitian: z.object({ publikasi: z.object({ kicker: z.string().max(300), title: z.string().max(500), pubs: z.array(z.object({ title: z.string().max(500), venue: z.string().max(300), year: z.string().max(40) })).max(100) }), jurnal: z.object({ kicker: z.string().max(300), title: z.string().max(500), intro: z.string().max(5000), cards: z.array(z.object({ title: z.string().max(500), body: z.string().max(3000), note: z.string().max(500) })).max(100) }), kolaborasi: z.object({ kicker: z.string().max(300), title: z.string().max(500), intro: z.string().max(5000), partners: TextListSchema }) }),
+  pengabdian: z.object({ programDesa: z.object({ kicker: z.string().max(300), title: z.string().max(500), desa: z.array(z.object({ name: z.string().max(300), body: z.string().max(3000) })).max(100) }), kemitraan: z.object({ kicker: z.string().max(300), title: z.string().max(500), mitra: TextListSchema }), kegiatan: z.object({ kicker: z.string().max(300), title: z.string().max(500), items: z.array(z.object({ t: z.string().max(100), d: z.string().max(3000) })).max(100) }) }),
+  kemahasiswaan: z.object({ himpunan: z.object({ kicker: z.string().max(300), title: z.string().max(500), intro: z.string().max(5000), divisi: TextListSchema }), beasiswa: z.object({ kicker: z.string().max(300), title: z.string().max(500), items: z.array(z.object({ name: z.string().max(300), body: z.string().max(3000) })).max(100) }), prestasi: z.object({ kicker: z.string().max(300), title: z.string().max(500), items: TextListSchema }), alumni: z.object({ kicker: z.string().max(300), title: z.string().max(500), quote: z.string().max(5000), name: z.string().max(200), role: z.string().max(200), stats: z.array(MetricSchema).max(50) }) }),
+  news: KickerTitleSchema,
+  cta: z.object({ title: z.string().max(500), body: z.string().max(3000), primary: z.string().max(160), secondary: z.string().max(160) }),
+  footer: z.object({ newsletterTitle: z.string().max(500), socials: z.object({ facebook: z.string().max(2000), twitter: z.string().max(2000), youtube: z.string().max(2000), linkedin: z.string().max(2000) }), contact: z.object({ phone: z.string().max(100), email: z.string().max(320), address: z.string().max(1000) }), quickLinks: z.array(z.object({ label: z.string().max(200), href: z.string().max(2000) })).max(100), copyright: z.string().max(500), tagline: z.string().max(500) }),
 });
+export type ValidatedSiteContent = z.infer<typeof SiteContentSchema>;
+
+export const ContentSchema = z.object({ content: SiteContentSchema });
+
+export const PaginationSchema = z.object({
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+  offset: z.coerce.number().int().min(0).default(0),
+});
+export type Pagination = z.infer<typeof PaginationSchema>;
 
 /* -------------------------------------------------------------- envelopes */
 

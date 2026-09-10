@@ -3,8 +3,9 @@ import { JwtService } from "@nestjs/jwt";
 import type { Request } from "express";
 import { PostInputSchema, type Role } from "@tpb/contracts";
 import { PrismaService } from "../prisma.service";
-import { JwtAuthGuard, Roles, RolesGuard, RequestUser } from "../auth";
+import { JwtAuthGuard, Roles, RolesGuard, RequestUser, safeUser } from "../auth";
 import { parse } from "../zod";
+import { parsePagination, paginationMeta } from "../pagination";
 
 type CookieRequest = Request & { user?: RequestUser };
 
@@ -19,11 +20,14 @@ export class PostsController {
   constructor(private readonly prisma: PrismaService, private readonly jwt: JwtService) {}
 
   // Optional authentication: returns the request user when a valid token is present.
-  private optionalUser(req: CookieRequest): RequestUser | null {
+  private async optionalUser(req: CookieRequest): Promise<RequestUser | null> {
     const raw = req.headers?.authorization?.replace(/^Bearer\s+/i, "");
     if (!raw) return null;
     try {
-      return this.jwt.verify<RequestUser>(raw);
+      const payload = this.jwt.verify<{ id?: string }>(raw);
+      if (!payload.id) return null;
+      const user = await this.prisma.user.findUnique({ where: { id: payload.id } });
+      return user?.isActive ? safeUser(user) : null;
     } catch {
       return null;
     }
@@ -31,16 +35,19 @@ export class PostsController {
 
   // Public: published only. ?all=1 (ADMIN/EDITOR): everything, including drafts.
   @Get()
-  async list(@Query("all") all: string, @Req() req: CookieRequest) {
+  async list(@Query("all") all: string, @Query() query: Record<string, unknown>, @Req() req: CookieRequest) {
+    const pagination = parsePagination(query);
+    const where = all === "1" ? { deletedAt: null } : { deletedAt: null, status: "published" as const };
     if (all === "1") {
-      const user = this.optionalUser(req);
+      const user = await this.optionalUser(req);
       if (!user) throw new UnauthorizedException("Token akses diperlukan.");
       if (!EDITORIAL.includes(user.role)) throw new UnauthorizedException("Role tidak memiliki akses.");
-      const rows = await this.prisma.post.findMany({ where: { deletedAt: null }, orderBy: { date: "desc" } });
-      return { posts: rows };
     }
-    const rows = await this.prisma.post.findMany({ where: { deletedAt: null, status: "published" }, orderBy: { date: "desc" } });
-    return { posts: rows };
+    const [rows, total] = await Promise.all([
+      this.prisma.post.findMany({ where, orderBy: [{ date: "desc" }, { id: "desc" }], skip: pagination.offset, take: pagination.limit }),
+      this.prisma.post.count({ where }),
+    ]);
+    return { posts: rows, pagination: paginationMeta(pagination, total) };
   }
 
   // Public: published only. Drafts require an ADMIN/EDITOR token.
@@ -50,7 +57,7 @@ export class PostsController {
     const row = await this.prisma.post.findFirst({ where });
     if (!row) return { post: null };
     if (row.status !== "published") {
-      const user = this.optionalUser(req);
+      const user = await this.optionalUser(req);
       if (!user || !EDITORIAL.includes(user.role)) return { post: null };
     }
     return { post: row };

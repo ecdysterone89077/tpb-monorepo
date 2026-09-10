@@ -14,6 +14,16 @@ Monorepo privat untuk situs Program Studi Teknik Pertanian & Biosistem UNU Purwo
 - pnpm ≥ 9 (`corepack enable`)
 - Docker (MySQL 8.0 lokal) atau MySQL sendiri
 
+## Environment
+
+Salin setiap contoh environment ke file lokal/server yang sesuai. Jangan commit file `.env`:
+
+- `apps/api/.env.example`: `DATABASE_URL`, JWT secrets/TTL, CORS allowlist, refresh-cookie settings, bootstrap identity, `MEDIA_DIR`, and upload limit.
+- `apps/web/.env.example`: public `VITE_API_URL` only.
+- `tools/supabase-migration/.env.example`: migration-only Supabase service-role key and MySQL URL. The service-role key is never used by the frontend.
+
+Production must provide `CORS_ORIGINS`, strong distinct JWT secrets, `COOKIE_SECURE=true`, and a writable absolute `MEDIA_DIR`.
+
 ## Setup Pengembangan
 
 ```bash
@@ -28,10 +38,34 @@ cp apps/web/.env.example apps/web/.env
 pnpm install
 pnpm --filter @tpb/api prisma:migrate
 
-# 4. Jalankan
+# 4. Jalankan aplikasi
 pnpm dev:api    # http://localhost:3000/v1
 pnpm dev:web    # http://localhost:5173
 ```
+
+### Perintah database satu baris
+
+```bash
+pnpm prisma:generate
+pnpm db:migrate
+pnpm db:migrate:create -- nama_migrasi
+pnpm db:migrate:deploy
+```
+
+`db:migrate` membuat dan menerapkan migration development; `db:migrate:deploy` hanya untuk migration yang sudah direview pada staging/production. Sistem ini tidak memiliki seeder berisi data institusi atau data palsu; bootstrap admin dilakukan melalui halaman `/#admin` saat tabel user kosong.
+
+### Handover hosting
+
+Hosting team menyediakan Node.js ≥20, pnpm, MySQL 8.0, PM2 atau runtime process manager, direktori upload yang writable, dan secrets environment. Jalankan `pnpm db:migrate:deploy`, build API/web, lalu jalankan API melalui `ecosystem.config.cjs`.
+
+Nginx atau Caddy diperlukan sebagai reverse proxy:
+
+- `/` menyajikan `apps/web/dist` sebagai static site.
+- `/v1/` meneruskan request ke API NestJS pada port 3000.
+- `/media/` meneruskan request ke API pada port 3000 (atau ke shared `MEDIA_DIR` bila host memilih static serving langsung).
+- Proxy harus meneruskan cookie dan header `Authorization`, serta mengatur HTTPS di sisi hosting.
+
+Buat `MEDIA_DIR` absolut, writable oleh user proses API, dan persisten di luar release directory. Workflow GitHub Actions hanya menyediakan template build/deploy; hosting team mengisi GitHub secrets, server, reverse proxy, TLS, DNS, database production, dan backup.
 
 ## Alur Admin
 

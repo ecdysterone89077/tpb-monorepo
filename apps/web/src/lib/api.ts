@@ -107,7 +107,7 @@ export const api = {
   /* ---------------------------------------------------------- posts */
 
   async listPublic(): Promise<Post[]> {
-    const d = await request<{ posts: Post[] }>(`/posts`);
+    const d = await request<{ posts: Post[]; pagination?: { limit: number; offset: number; total: number; hasMore: boolean } }>(`/posts`);
     return d.posts;
   },
 
@@ -183,7 +183,7 @@ export const api = {
   },
 
   async listGallery(): Promise<GalleryItem[]> {
-    const d = await request<{ gallery: GalleryItem[] }>(`/gallery`);
+    const d = await request<{ gallery: GalleryItem[]; pagination?: { limit: number; offset: number; total: number; hasMore: boolean } }>(`/gallery`);
     return d.gallery;
   },
 

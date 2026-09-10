@@ -33,22 +33,25 @@ describe("JwtAuthGuard", () => {
     return { switchToHttp: () => ({ getRequest: () => req }) } as any;
   };
 
-  it("menolak tanpa header Authorization", () => {
-    const guard = new JwtAuthGuard({ verify: jest.fn() } as any);
-    expect(() => guard.canActivate(makeCtx())).toThrow(UnauthorizedException);
+  const prisma = { user: { findUnique: jest.fn() } };
+
+  it("menolak tanpa header Authorization", async () => {
+    const guard = new JwtAuthGuard({ verify: jest.fn() } as any, prisma as any);
+    await expect(guard.canActivate(makeCtx())).rejects.toThrow(UnauthorizedException);
   });
 
-  it("menolak token invalid", () => {
-    const guard = new JwtAuthGuard({ verify: () => { throw new Error("bad"); } } as any);
-    expect(() => guard.canActivate(makeCtx("Bearer nope"))).toThrow(UnauthorizedException);
+  it("menolak token invalid", async () => {
+    const guard = new JwtAuthGuard({ verify: () => { throw new Error("bad"); } } as any, prisma as any);
+    await expect(guard.canActivate(makeCtx("Bearer nope"))).rejects.toThrow(UnauthorizedException);
   });
 
-  it("menerima token valid dan menempel user ke request", () => {
-    const user = { id: "u1", email: "a@b.c", role: "ADMIN" as Role, name: "A" };
-    const guard = new JwtAuthGuard({ verify: () => user } as any);
+  it("menerima token valid dan menempel user ke request", async () => {
+    const user = { id: "u1", email: "a@b.c", role: "ADMIN" as Role, name: "A", isActive: true };
+    prisma.user.findUnique.mockResolvedValue(user);
+    const guard = new JwtAuthGuard({ verify: () => ({ id: user.id }) } as any, prisma as any);
     const ctx = makeCtx("Bearer good");
-    expect(guard.canActivate(ctx)).toBe(true);
-    expect(ctx.switchToHttp().getRequest().user).toEqual(user);
+    await expect(guard.canActivate(ctx)).resolves.toBe(true);
+    expect(ctx.switchToHttp().getRequest().user).toEqual({ id: user.id, email: user.email, role: user.role, name: user.name });
   });
 });
 

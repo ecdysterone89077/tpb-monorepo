@@ -1,7 +1,7 @@
 import { Module } from "@nestjs/common";
-import { APP_INTERCEPTOR } from "@nestjs/core";
+import { APP_GUARD, APP_INTERCEPTOR } from "@nestjs/core";
 import { JwtModule } from "@nestjs/jwt";
-import { ThrottlerModule } from "@nestjs/throttler";
+import { ThrottlerGuard, ThrottlerModule } from "@nestjs/throttler";
 import { PrismaService } from "./prisma.service";
 import { JwtAuthGuard, RolesGuard } from "./auth";
 import { AuditInterceptor } from "./audit";
@@ -18,6 +18,6 @@ const accessTtlSeconds = Number(process.env.JWT_ACCESS_TTL_SECONDS || 900);
 @Module({
   imports: [ThrottlerModule.forRoot([{ ttl: 60000, limit: 100 }]), JwtModule.register({ secret: jwtSecret, signOptions: { expiresIn: accessTtlSeconds } })],
   controllers: [AuthController, ContentController, PostsController, PmbController, PublicController, AdminController],
-  providers: [PrismaService, JwtAuthGuard, RolesGuard, { provide: APP_INTERCEPTOR, useClass: AuditInterceptor }],
+  providers: [PrismaService, JwtAuthGuard, RolesGuard, { provide: APP_GUARD, useClass: ThrottlerGuard }, { provide: APP_INTERCEPTOR, useClass: AuditInterceptor }],
 })
 export class AppModule {}
