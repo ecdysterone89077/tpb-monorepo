@@ -4,7 +4,7 @@ import { Observable, tap } from "rxjs";
 import { PrismaService } from "./prisma.service";
 
 // Kunci yang selalu di-redaksi; PMB `message` adalah PII dan tidak pernah di-log.
-const REDACT_KEYS = new Set(["password", "passwordHash", "token", "refreshToken", "accessToken", "secret", "authorization"]);
+const REDACT_KEYS = new Set(["password", "passwordhash", "token", "refreshtoken", "accesstoken", "secret", "authorization"]);
 
 const redact = (obj: unknown, depth = 0): unknown => {
   if (depth > 4 || obj === null || typeof obj !== "object") return obj;

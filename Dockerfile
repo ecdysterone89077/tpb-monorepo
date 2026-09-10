@@ -4,7 +4,7 @@ WORKDIR /repo
 
 RUN corepack enable
 
-COPY pnpm-workspace.yaml package.json ./
+COPY pnpm-workspace.yaml package.json tsconfig.base.json ./
 COPY packages/contracts/package.json packages/contracts/
 COPY apps/api/package.json apps/api/
 

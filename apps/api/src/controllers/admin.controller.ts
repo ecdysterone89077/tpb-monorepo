@@ -122,7 +122,7 @@ export class AdminController {
       },
     }),
   )
-  async uploadMedia(@UploadedFile() file: Express.Multer.File | undefined, @Req() req: AuthRequest) {
+  async uploadMedia(@UploadedFile() file: Express.Multer.File | undefined) {
     if (!file) throw new Error("Berkas tidak diterima atau jenis berkas tidak diizinkan.");
     const asset = await this.prisma.mediaAsset.create({
       data: { url: `/media/${file.filename}`, filename: file.originalname, mimeType: file.mimetype, size: file.size, alt: null },

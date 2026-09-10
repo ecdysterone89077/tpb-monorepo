@@ -61,6 +61,6 @@ jobs:
             pnpm --filter @tpb/api prisma:deploy
             pnpm --filter @tpb/contracts build
             pnpm --filter @tpb/api build
-            pnpm --filter @tpb/web build
+            VITE_API_URL="${{ vars.STAGING_API_URL }}" pnpm --filter @tpb/web build
             (pm2 reload tpb-api || pm2 start ecosystem.config.cjs)
             curl -fsS http://127.0.0.1:3000/v1/health

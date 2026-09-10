@@ -1,25 +1,41 @@
 import { Body, Controller, Delete, Get, Param, Post as PostMethod, Put, Query, Req, UnauthorizedException, UseGuards } from "@nestjs/common";
+import { JwtService } from "@nestjs/jwt";
 import type { Request } from "express";
-import { PostInputSchema } from "@tpb/contracts";
+import { PostInputSchema, type Role } from "@tpb/contracts";
 import { PrismaService } from "../prisma.service";
 import { JwtAuthGuard, Roles, RolesGuard, RequestUser } from "../auth";
 import { parse } from "../zod";
 
 type CookieRequest = Request & { user?: RequestUser };
 
+// Roles allowed to read non-published material.
+const EDITORIAL: Role[] = ["ADMIN", "EDITOR"];
+
 const slugify = (s: string) =>
-  s.toLowerCase().normalize("NFKD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "").slice(0, 190) || "post";
+  s.toLowerCase().normalize("NFKD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "").slice(0, 220) || "post";
 
 @Controller("posts")
 export class PostsController {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService, private readonly jwt: JwtService) {}
 
-  // Public: published only. ?all=1 with auth: everything (admin).
+  // Optional authentication: returns the request user when a valid token is present.
+  private optionalUser(req: CookieRequest): RequestUser | null {
+    const raw = req.headers?.authorization?.replace(/^Bearer\s+/i, "");
+    if (!raw) return null;
+    try {
+      return this.jwt.verify<RequestUser>(raw);
+    } catch {
+      return null;
+    }
+  }
+
+  // Public: published only. ?all=1 (ADMIN/EDITOR): everything, including drafts.
   @Get()
   async list(@Query("all") all: string, @Req() req: CookieRequest) {
     if (all === "1") {
-      const user = req.user;
+      const user = this.optionalUser(req);
       if (!user) throw new UnauthorizedException("Token akses diperlukan.");
+      if (!EDITORIAL.includes(user.role)) throw new UnauthorizedException("Role tidak memiliki akses.");
       const rows = await this.prisma.post.findMany({ where: { deletedAt: null }, orderBy: { date: "desc" } });
       return { posts: rows };
     }
@@ -27,10 +43,17 @@ export class PostsController {
     return { posts: rows };
   }
 
+  // Public: published only. Drafts require an ADMIN/EDITOR token.
   @Get(":id")
-  async get(@Param("id") id: string) {
-    const row = await this.prisma.post.findFirst({ where: { OR: [{ id }, { slug: id }], deletedAt: null } });
-    return { post: row ?? null };
+  async get(@Param("id") id: string, @Req() req: CookieRequest) {
+    const where = { OR: [{ id }, { slug: id }], deletedAt: null };
+    const row = await this.prisma.post.findFirst({ where });
+    if (!row) return { post: null };
+    if (row.status !== "published") {
+      const user = this.optionalUser(req);
+      if (!user || !EDITORIAL.includes(user.role)) return { post: null };
+    }
+    return { post: row };
   }
 
   @PostMethod()

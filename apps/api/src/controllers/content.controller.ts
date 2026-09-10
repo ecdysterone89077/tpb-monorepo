@@ -2,7 +2,7 @@ import { Body, Controller, Get, Put, Req, UseGuards } from "@nestjs/common";
 import type { Request } from "express";
 import { ContentSchema } from "@tpb/contracts";
 import { PrismaService } from "../prisma.service";
-import { JwtAuthGuard, RequestUser } from "../auth";
+import { JwtAuthGuard, Roles, RolesGuard, RequestUser } from "../auth";
 import { parse } from "../zod";
 
 type CookieRequest = Request & { user?: RequestUser };
@@ -18,8 +18,10 @@ export class ContentController {
     return { content: row?.data ?? null };
   }
 
+  // Only ADMIN may replace the public site content (navigation, branding, copy).
   @Put()
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles("ADMIN")
   async save(@Body() body: unknown, @Req() req: CookieRequest) {
     const { content } = parse(ContentSchema, body);
     const saved = await this.prisma.siteContent.upsert({

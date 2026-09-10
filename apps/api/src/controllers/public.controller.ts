@@ -1,4 +1,5 @@
 import { Body, Controller, Delete, Get, Param, Post, Put, UseGuards } from "@nestjs/common";
+import { createHash } from "node:crypto";
 import { GalleryInputSchema, StatsSchema, SubscriberInputSchema } from "@tpb/contracts";
 import { PrismaService } from "../prisma.service";
 import { JwtAuthGuard, Roles, RolesGuard } from "../auth";
@@ -39,9 +40,11 @@ export class PublicController {
   async subscribe(@Body() body: unknown) {
     const { email } = parse(SubscriberInputSchema, body);
     const normalized = email.toLowerCase();
-    const existing = await this.prisma.subscriber.findUnique({ where: { email: normalized } });
-    if (existing) return { subscriber: existing };
-    const subscriber = await this.prisma.subscriber.create({ data: { email: normalized } });
+    const subscriber = await this.prisma.subscriber.upsert({
+      where: { email: normalized },
+      create: { email: normalized },
+      update: {},
+    });
     return { subscriber };
   }
 
@@ -69,7 +72,7 @@ export class PublicController {
   async addGallery(@Body() body: unknown) {
     const input = parse(GalleryInputSchema, body);
     const item = await this.prisma.galleryItem.create({
-      data: { image: input.image, caption: input.caption, link: input.link ?? null },
+      data: { image: input.image, imageHash: createHash("sha256").update(input.image).digest("hex"), caption: input.caption, link: input.link ?? null },
     });
     return { item: { ...item, createdAt: item.createdAt.toISOString() } };
   }

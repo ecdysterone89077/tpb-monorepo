@@ -6,19 +6,19 @@ services:
     container_name: tpb-mysql
     restart: unless-stopped
     environment:
-      MYSQL_ROOT_PASSWORD: tpb-root-dev-password
-      MYSQL_DATABASE: tpb
-      MYSQL_USER: tpb
-      MYSQL_PASSWORD: tpb-dev-password
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-tpb-root-dev-password}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-tpb}
+      MYSQL_USER: ${MYSQL_USER:-tpb}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-tpb-dev-password}
     ports:
-      - "3306:3306"
+      - "127.0.0.1:3306:3306"
     command:
       - --character-set-server=utf8mb4
       - --collation-server=utf8mb4_unicode_ci
     volumes:
       - tpb-mysql-data:/var/lib/mysql
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-ptpb-root-dev-password"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p$${MYSQL_ROOT_PASSWORD}"]
       interval: 5s
       timeout: 3s
       retries: 20
@@ -31,16 +31,18 @@ services:
       db:
         condition: service_healthy
     environment:
-      NODE_ENV: production
-      PORT: 3000
-      DATABASE_URL: mysql://tpb:tpb-dev-password@db:3306/tpb
-      CORS_ORIGINS: http://localhost:8443,http://localhost:5173
-      JWT_ACCESS_SECRET: dev-only-change-me-access-secret-change-me
-      JWT_REFRESH_SECRET: dev-only-change-me-refresh-secret-change-me
-      COOKIE_SECURE: "false"
+      NODE_ENV: development
+      PORT: ${PORT:-3000}
+      DATABASE_URL: mysql://${MYSQL_USER:-tpb}:${MYSQL_PASSWORD:-tpb-dev-password}@db:3306/${MYSQL_DATABASE:-tpb}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8443,http://localhost:5173}
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-development-only-secret}
+      JWT_ACCESS_TTL_SECONDS: ${JWT_ACCESS_TTL_SECONDS:-900}
+      JWT_REFRESH_TTL_DAYS: ${JWT_REFRESH_TTL_DAYS:-30}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      COOKIE_NAME: ${COOKIE_NAME:-tpb_refresh}
       MEDIA_DIR: /data/uploads
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     volumes:
       - tpb-uploads:/data/uploads
     command: sh -c "npx prisma migrate deploy && node dist/main.js"

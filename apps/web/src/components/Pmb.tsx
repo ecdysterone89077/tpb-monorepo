@@ -25,6 +25,7 @@ export function Pmb({ onClose, programs }: { onClose: () => void; programs: stri
     setError("");
     try {
       await api.registerPmb({ ...form, idempotencyKey: idempotencyKey() });
+      sessionStorage.removeItem("tpb-pmb-idem");
       setState("done");
     } catch (err: any) {
       setError(err?.message ?? "Gagal mengirim pendaftaran.");

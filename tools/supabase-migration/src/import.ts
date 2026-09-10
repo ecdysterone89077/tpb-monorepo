@@ -11,10 +11,17 @@ const prisma = new PrismaClient();
 
 const OUT = path.resolve("out");
 const slugify = (s: string) =>
-  s.toLowerCase().normalize("NFKD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "").slice(0, 190) || "post";
+  s.toLowerCase().normalize("NFKD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "").slice(0, 220) || "post";
 
-const sha = (v: unknown) => createHash("sha256").update(JSON.stringify(v)).digest("hex");
 const asArray = (v: unknown): any[] => (Array.isArray(v) ? v : v == null ? [] : [v]);
+const sourceHash = (v: unknown) => createHash("sha256").update(JSON.stringify(v)).digest("hex");
+const readJson = (name: string) => JSON.parse(readFileSync(path.join(OUT, name), "utf8"));
+const assertSource = (manifest: any, key: string, value: unknown) => {
+  const expected = manifest[key]?.sha256 ?? null;
+  const actual = value == null ? null : sourceHash(value);
+  if (expected !== actual) throw new Error(`${key}.json checksum tidak cocok dengan export-manifest.json`);
+};
+const exactResult = (expected: number, actual: number) => ({ expected, actual, status: expected === actual ? "ok" : "mismatch" });
 
 async function main() {
   if (!existsSync(path.join(OUT, "export-manifest.json"))) {
@@ -22,12 +29,19 @@ async function main() {
     process.exit(1);
   }
 
+  const manifest = readJson("export-manifest.json");
   const results: Record<string, { expected: number; actual: number; status: string }> = {};
-  const posts = asArray(JSON.parse(readFileSync(path.join(OUT, "posts.json"), "utf8")));
-  let postsOk = 0;
-  for (const p of posts) {
+  const posts = readJson("posts.json");
+  assertSource(manifest, "posts", posts);
+  const postRows = asArray(posts);
+  const seenSlugs = new Map<string, string>();
+  for (const p of postRows) {
     if (!p?.title) continue;
-    let slug = slugify(p.slug || p.title);
+    const slug = slugify(p.slug || p.title);
+    const sourceTitle = String(p.title);
+    const priorTitle = seenSlugs.get(slug);
+    if (priorTitle && priorTitle !== sourceTitle) throw new Error(`Slug post collision: "${priorTitle}" dan "${sourceTitle}" -> "${slug}"`);
+    seenSlugs.set(slug, sourceTitle);
     const data = {
       title: String(p.title).slice(0, 220),
       category: String(p.category || "Umum").slice(0, 80),
@@ -39,23 +53,29 @@ async function main() {
       date: p.date ? new Date(p.date) : new Date(),
     };
     await prisma.post.upsert({ where: { slug }, create: { slug, ...data }, update: data });
-    postsOk++;
   }
-  results.posts = { expected: posts.length, actual: postsOk, status: postsOk >= posts.length ? "ok" : "mismatch" };
+  const importedSlugs = [...seenSlugs.keys()];
+  const importedPostCount = importedSlugs.length ? await prisma.post.count({ where: { deletedAt: null, slug: { in: importedSlugs } } }) : 0;
+  results.posts = exactResult(importedSlugs.length, importedPostCount);
 
-  const subscribers = asArray(JSON.parse(readFileSync(path.join(OUT, "subscribers.json"), "utf8")));
-  for (const s of subscribers) {
+  const subscribers = readJson("subscribers.json");
+  assertSource(manifest, "subscribers", subscribers);
+  const subscriberRows = asArray(subscribers);
+  for (const s of subscriberRows) {
     if (!s?.email) continue;
     const email = String(s.email).toLowerCase();
     await prisma.subscriber.upsert({ where: { email }, create: { email }, update: {} });
   }
-  const subCount = await prisma.subscriber.count();
-  results.subscribers = { expected: subscribers.length, actual: subCount, status: subCount >= subscribers.length ? "ok" : "mismatch" };
+  const importedEmails = subscriberRows.filter((s) => !!s?.email).map((s) => String(s.email).toLowerCase());
+  const subCount = importedEmails.length ? await prisma.subscriber.count({ where: { email: { in: importedEmails } } }) : 0;
+  results.subscribers = exactResult(importedEmails.length, subCount);
 
-  const pmb = asArray(JSON.parse(readFileSync(path.join(OUT, "pmb.json"), "utf8")));
-  for (const r of pmb) {
+  const pmb = readJson("pmb.json");
+  assertSource(manifest, "pmb", pmb);
+  const pmbRows = asArray(pmb);
+  for (const r of pmbRows) {
     if (!r?.name || !r?.email) continue;
-    const key = String(r.id ?? r.idempotencyKey ?? crypto.randomUUID()).slice(0, 64);
+    const key = (() => { const value = String(r.id ?? r.idempotencyKey ?? sourceHash(r)); return value.length <= 64 ? value : sourceHash(value); })();
     const data = {
       name: String(r.name).slice(0, 160),
       email: String(r.email).slice(0, 320),
@@ -67,39 +87,43 @@ async function main() {
     };
     await prisma.pmbRegistration.upsert({ where: { idempotencyKey: key }, create: { idempotencyKey: key, ...data }, update: data });
   }
-  const pmbCount = await prisma.pmbRegistration.count({ where: { deletedAt: null } });
-  results.pmb = { expected: pmb.length, actual: pmbCount, status: pmbCount >= pmb.length ? "ok" : "mismatch" };
+  const importedPmbKeys = pmbRows.filter((r) => !!r?.name && !!r?.email).map((r) => { const value = String(r.id ?? r.idempotencyKey ?? sourceHash(r)); return value.length <= 64 ? value : sourceHash(value); });
+  const pmbCount = importedPmbKeys.length ? await prisma.pmbRegistration.count({ where: { deletedAt: null, idempotencyKey: { in: importedPmbKeys } } }) : 0;
+  results.pmb = exactResult(importedPmbKeys.length, pmbCount);
 
-  const gallery = asArray(JSON.parse(readFileSync(path.join(OUT, "gallery.json"), "utf8")));
-  const galleryCountBefore = await prisma.galleryItem.count();
-  for (const g of gallery) {
+  const gallery = readJson("gallery.json");
+  assertSource(manifest, "gallery", gallery);
+  const galleryRows = asArray(gallery);
+  for (const g of galleryRows) {
     if (!g?.image) continue;
-    await prisma.galleryItem.create({ data: { image: String(g.image), caption: g.caption ?? null, link: g.link ?? null } });
+    const image = String(g.image);
+    const imageHash = sourceHash(image);
+    await prisma.galleryItem.upsert({ where: { imageHash }, create: { image, imageHash, caption: g.caption ?? null, link: g.link ?? null }, update: { image, caption: g.caption ?? null, link: g.link ?? null } });
   }
-  const galleryExpected = gallery.filter((g) => g?.image).length;
-  const galleryCount = await prisma.galleryItem.count();
-  results.gallery = { expected: galleryExpected, actual: galleryCount, status: galleryCount >= galleryExpected ? "ok" : "mismatch" };
+  const galleryExpected = galleryRows.filter((g) => g?.image).length;
+  const importedImageHashes = galleryRows.filter((g) => g?.image).map((g) => sourceHash(String(g.image)));
+  const galleryCount = importedImageHashes.length ? await prisma.galleryItem.count({ where: { imageHash: { in: importedImageHashes } } }) : 0;
+  results.gallery = exactResult(galleryExpected, galleryCount);
 
-  const content = JSON.parse(readFileSync(path.join(OUT, "content.json"), "utf8"));
-  if (content != null) {
-    await prisma.siteContent.upsert({ where: { key: "main" }, create: { key: "main", data: content }, update: { data: content } });
-  }
-  const contentRow = await prisma.siteContent.findUnique({ where: { key: "main" } });
-  const contentOk = (content == null) === (contentRow?.data == null);
+  const content = readJson("content.json");
+  assertSource(manifest, "content", content);
+  const contentRow = await prisma.siteContent.upsert({ where: { key: "main" }, create: { key: "main", data: content }, update: { data: content } });
+  const contentOk = (content == null) === (contentRow.data == null);
   results.content = { expected: content == null ? 0 : 1, actual: contentRow?.data != null ? 1 : 0, status: contentOk ? "ok" : "mismatch" };
 
   // stats: stored inside content JSON in the legacy system; also importable standalone
-  const stats = asArray(JSON.parse(readFileSync(path.join(OUT, "stats.json"), "utf8")));
-  if (stats.length > 0) {
-    await prisma.$transaction([
-      prisma.siteStat.deleteMany(),
-      ...stats.slice(0, 100).map((st: any, i: number) =>
-        prisma.siteStat.create({ data: { value: Number(st.value) || 0, suffix: String(st.suffix ?? "").slice(0, 20), label: String(st.label ?? "").slice(0, 160), ord: i } }),
-      ),
-    ]);
-  }
+  const stats = readJson("stats.json");
+  assertSource(manifest, "stats", stats);
+  const statRows = asArray(stats);
+  if (statRows.length > 100) throw new Error("stats.json melebihi batas 100 baris.");
+  await prisma.$transaction([
+    prisma.siteStat.deleteMany(),
+    ...statRows.slice(0, 100).map((st: any, i: number) =>
+      prisma.siteStat.create({ data: { value: Number(st.value) || 0, suffix: String(st.suffix ?? "").slice(0, 20), label: String(st.label ?? "").slice(0, 160), ord: i } }),
+    ),
+  ]);
   const statCount = await prisma.siteStat.count();
-  results.stats = { expected: stats.length, actual: statCount, status: statCount >= stats.length ? "ok" : "mismatch" };
+  results.stats = exactResult(statRows.length, statCount);
 
   writeFileSync(path.join(OUT, "import-manifest.json"), JSON.stringify({ results, at: new Date().toISOString() }, null, 2), "utf8");
   console.log(JSON.stringify(results, null, 2));

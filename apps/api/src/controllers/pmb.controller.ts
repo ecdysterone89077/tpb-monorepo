@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, Post, Put, Query, Req, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, Get, HttpCode, Param, Post, Put, Query, UseGuards, ConflictException } from "@nestjs/common";
 import { PmbInputSchema, PmbStatusSchema } from "@tpb/contracts";
 import { PrismaService } from "../prisma.service";
 import { JwtAuthGuard, Roles, RolesGuard } from "../auth";
@@ -15,28 +15,26 @@ export class PmbController {
     const key = input.idempotencyKey ?? crypto.randomUUID();
     const existing = await this.prisma.pmbRegistration.findUnique({ where: { idempotencyKey: key } });
     if (existing) return { registration: existing };
-    const registration = await this.prisma.pmbRegistration.create({
-      data: {
-        idempotencyKey: key,
-        name: input.name,
-        email: input.email,
-        phone: input.phone,
-        school: input.school,
-        program: input.program,
-        message: input.message,
-      },
-    });
-    return { registration };
+    try {
+      const registration = await this.prisma.pmbRegistration.create({
+        data: { idempotencyKey: key, name: input.name, email: input.email, phone: input.phone, school: input.school, program: input.program, message: input.message },
+      });
+      return { registration };
+    } catch (error: any) {
+      // A concurrent request may win the unique-key race; return its result.
+      if (error?.code === "P2002") {
+        const concurrent = await this.prisma.pmbRegistration.findUnique({ where: { idempotencyKey: key } });
+        if (concurrent) return { registration: concurrent };
+      }
+      throw new ConflictException("Gagal menyimpan pendaftaran PMB.");
+    }
   }
 
   @Get()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles("ADMIN", "OPERATOR")
   async list(@Query("all") all?: string) {
-    const registrations = await this.prisma.pmbRegistration.findMany({
-      where: all === "1" ? {} : { deletedAt: null },
-      orderBy: { createdAt: "desc" },
-    });
+    const registrations = await this.prisma.pmbRegistration.findMany({ where: all === "1" ? {} : { deletedAt: null }, orderBy: { createdAt: "desc" } });
     return { registrations };
   }
 

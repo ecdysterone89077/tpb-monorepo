@@ -12,7 +12,9 @@ async function bootstrap() {
   app.use(helmet());
   app.use(cookieParser());
   app.use((req: any, res: any, next: () => void) => { req.id = req.headers["x-request-id"] || randomUUID(); res.setHeader("x-request-id", req.id); next(); });
-  const origins = (process.env.CORS_ORIGINS || "http://localhost:5173").split(",").map((x) => x.trim()).filter(Boolean);
+  const configuredOrigins = process.env.CORS_ORIGINS;
+  if (process.env.NODE_ENV === "production" && !configuredOrigins) throw new Error("CORS_ORIGINS wajib di production.");
+  const origins = (configuredOrigins || "http://localhost:5173").split(",").map((x) => x.trim()).filter(Boolean);
   app.enableCors({ origin: origins, credentials: true });
   app.setGlobalPrefix("v1");
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true, forbidNonWhitelisted: true }));

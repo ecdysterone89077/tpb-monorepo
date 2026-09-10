@@ -25,11 +25,30 @@ jobs:
       - name: Build contracts
         run: pnpm --filter @tpb/contracts build
 
+      - name: Lint
+        run: pnpm lint
+
+      - name: Audit credentials and environment
+        run: pnpm audit:env
+
       - name: Prisma generate + validate
         run: |
           pnpm --filter @tpb/api prisma:generate
           pnpm --filter @tpb/api exec prisma validate
+        env:
+          # validate/migrate diff tidak membuka koneksi; nilai hanya harus ada.
+          DATABASE_URL: mysql://ci:ci@localhost:3306/ci_validate
 
+      - name: Unit tests (API, mocked)
+        run: pnpm --filter @tpb/api test -- --ci
+
+      - name: Verify migrations (SQL against schema)
+        run: |
+          pnpm --filter @tpb/api exec prisma migrate diff \
+            --from-empty \
+            --to-schema-datamodel prisma/schema.prisma \
+            --script > /tmp/expected-migration.sql
+          cmp --silent /tmp/expected-migration.sql apps/api/prisma/migrations/0_init/migration.sql
       - name: Typecheck
         run: pnpm -r typecheck
 

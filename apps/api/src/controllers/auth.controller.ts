@@ -7,8 +7,8 @@ import { PrismaService } from "../prisma.service";
 import { JwtAuthGuard, RequestUser, hashToken, newRefreshToken, safeUser, verifyPassword } from "../auth";
 import { parse } from "../zod";
 
-const ACCESS_TTL_SECONDS = 15 * 60;
-const REFRESH_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+const ACCESS_TTL_SECONDS = Number(process.env.JWT_ACCESS_TTL_SECONDS || 900);
+const REFRESH_TTL_MS = Number(process.env.JWT_REFRESH_TTL_DAYS || 30) * 24 * 60 * 60 * 1000;
 
 type CookieRequest = Request & { user?: RequestUser };
 
@@ -17,6 +17,9 @@ export class AuthController {
   constructor(private readonly prisma: PrismaService, private readonly jwt: JwtService) {}
 
   private cookieOptions() {
+    if (process.env.NODE_ENV === "production" && process.env.COOKIE_SECURE !== "true") {
+      throw new Error("COOKIE_SECURE=true wajib di production.");
+    }
     return {
       httpOnly: true,
       secure: process.env.COOKIE_SECURE === "true",
@@ -40,10 +43,12 @@ export class AuthController {
   @Post("bootstrap")
   async bootstrap(@Body() body: unknown, @Res({ passthrough: true }) res: Response) {
     const { name, email, password } = parse(BootstrapSchema, body);
-    if ((await this.prisma.user.count()) > 0) throw new UnauthorizedException("Akun admin sudah terdaftar.");
-    const user = await this.prisma.user.create({
-      data: { name, email: email.toLowerCase(), passwordHash: await hash(password), role: "ADMIN" },
-    });
+    const user = await this.prisma.$transaction(async (tx) => {
+      if ((await tx.user.count()) > 0) throw new UnauthorizedException("Akun admin sudah terdaftar.");
+      return tx.user.create({
+        data: { name, email: email.toLowerCase(), passwordHash: await hash(password), role: "ADMIN" },
+      });
+    }, { isolationLevel: "Serializable" });
     return this.issueTokens({ id: user.id, email: user.email, role: user.role as Role, name: user.name }, res);
   }
 
@@ -71,10 +76,10 @@ export class AuthController {
     }
     const nextRaw = newRefreshToken();
     const next = await this.prisma.$transaction(async (tx) => {
-      const created = await tx.refreshToken.create({ data: { tokenHash: hashToken(nextRaw), userId: current.userId, expiresAt: new Date(Date.now() + REFRESH_TTL_MS) } });
-      await tx.refreshToken.update({ where: { id: current.id }, data: { revokedAt: new Date(), replacedById: created.id } });
-      return created;
-    });
+      const revoked = await tx.refreshToken.updateMany({ where: { id: current.id, revokedAt: null }, data: { revokedAt: new Date() } });
+      if (revoked.count !== 1) throw new UnauthorizedException("Refresh token tidak valid.");
+      return tx.refreshToken.create({ data: { tokenHash: hashToken(nextRaw), userId: current.userId, expiresAt: new Date(Date.now() + REFRESH_TTL_MS) } });
+    }, { isolationLevel: "Serializable" });
     void next;
     const user = safeUser(current.user);
     const accessToken = await this.jwt.signAsync(user);

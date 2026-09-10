@@ -101,7 +101,7 @@ export const api = {
   },
 
   async saveContent(content: SiteContent) {
-    return request<{ content: SiteContent }>(`/content`, jsonInit(content, "PUT"));
+    return request<{ content: SiteContent }>(`/content`, jsonInit({ content }, "PUT"));
   },
 
   /* ---------------------------------------------------------- posts */
@@ -207,6 +207,11 @@ export const api = {
     const fd = new FormData();
     fd.append("file", file);
     const r = await fetch(`${BASE}/media/upload`, { method: "POST", body: fd, credentials: "include", headers: authHeaders() });
+    if (r.status === 401 && accessToken && await refreshOnce()) {
+      const retry = await fetch(`${BASE}/media/upload`, { method: "POST", body: fd, credentials: "include", headers: authHeaders() });
+      const d = await parse<{ item: MediaAsset }>(retry);
+      return d.item;
+    }
     const d = await parse<{ item: MediaAsset }>(r);
     return d.item;
   },

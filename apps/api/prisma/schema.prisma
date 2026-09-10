@@ -112,6 +112,7 @@ model PmbRegistration {
 model GalleryItem {
   id        String   @id @default(uuid())
   image     String   @db.VarChar(2000)
+  imageHash String   @unique @db.VarChar(64)
   caption   String?  @db.VarChar(500)
   link      String?  @db.VarChar(2000)
   createdAt DateTime @default(now())

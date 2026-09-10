@@ -2,23 +2,29 @@
   "name": "tpb-monorepo",
   "version": "1.0.0",
   "private": true,
-  "description": "TPB UNU Purwokerto — monorepo (web, api, contracts, migration tooling)",
+  "description": "TPB UNU Purwokerto \u2014 monorepo (web, api, contracts, migration tooling)",
   "packageManager": "pnpm@9.15.0",
   "engines": {
     "node": ">=20.0.0"
   },
   "scripts": {
     "dev:web": "pnpm --filter @tpb/web dev",
-    "dev:api": "pnpm --filter @tpb/api start:dev",
+    "dev:api": "pnpm --filter @tpb/api dev",
     "dev:db": "docker compose up -d db",
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm --filter @tpb/api test",
-    "migration:export": "pnpm --filter @tpb/migration export",
-    "migration:import": "pnpm --filter @tpb/migration import",
-    "migration:reconcile": "pnpm --filter @tpb/migration reconcile"
+    "migration:export": "pnpm --filter @tpb/supabase-migration export",
+    "migration:import": "pnpm --filter @tpb/supabase-migration import",
+    "migration:reconcile": "pnpm --filter @tpb/supabase-migration reconcile",
+    "lint": "eslint .",
+    "audit:env": "pnpm --filter @tpb/env-audit check"
   },
   "devDependencies": {
-    "@types/node": "^22.10.0"
+    "@types/node": "^22.10.0",
+    "eslint": "^9.17.0",
+    "eslint-plugin-react-hooks": "^5.1.0",
+    "globals": "^15.14.0",
+    "typescript-eslint": "^8.19.0"
   }
 }
