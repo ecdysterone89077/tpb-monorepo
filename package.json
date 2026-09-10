@@ -1,0 +1,24 @@
+{
+  "name": "tpb-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "TPB UNU Purwokerto — monorepo (web, api, contracts, migration tooling)",
+  "packageManager": "pnpm@9.15.0",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "dev:web": "pnpm --filter @tpb/web dev",
+    "dev:api": "pnpm --filter @tpb/api start:dev",
+    "dev:db": "docker compose up -d db",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm --filter @tpb/api test",
+    "migration:export": "pnpm --filter @tpb/migration export",
+    "migration:import": "pnpm --filter @tpb/migration import",
+    "migration:reconcile": "pnpm --filter @tpb/migration reconcile"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0"
+  }
+}

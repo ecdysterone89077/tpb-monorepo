@@ -1,0 +1,23 @@
+# Dependencies
+node_modules/
+
+# Builds
+dist/
+dist-embed/
+*.tsbuildinfo
+
+# Environment & secrets — never commit
+.env
+.env.*
+!.env.example
+
+# Prisma client output
+apps/api/generated/
+
+# Migration artifacts (contain data exports — keep out of VCS)
+tools/supabase-migration/out/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.log

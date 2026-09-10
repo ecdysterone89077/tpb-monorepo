@@ -1,0 +1,185 @@
+// TPB API — Prisma schema (MySQL 8.0)
+// Dev: npx prisma migrate dev --name init | CI/server: prisma migrate deploy
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  EDITOR
+  OPERATOR
+}
+
+enum PostStatus {
+  published
+  draft
+}
+
+enum PmbStatus {
+  baru
+  diproses
+  diterima
+  ditolak
+}
+
+// ---------------------------------------------------------------- users/auth
+
+model User {
+  id           String    @id @default(uuid())
+  email        String    @unique @db.VarChar(320)
+  name         String?   @db.VarChar(160)
+  passwordHash String    @db.VarChar(255)
+  role         Role      @default(OPERATOR)
+  isActive     Boolean   @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  refreshTokens RefreshToken[]
+  auditLogs     AuditLog[]
+  posts         Post[]
+
+  @@map("users")
+}
+
+model RefreshToken {
+  id           String    @id @default(uuid())
+  tokenHash    String    @unique @db.VarChar(64)
+  userId       String
+  expiresAt    DateTime
+  revokedAt    DateTime?
+  replacedById String?   @unique
+  createdAt    DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("refresh_tokens")
+}
+
+// -------------------------------------------------------------------- posts
+
+model Post {
+  id        String     @id @default(uuid())
+  slug      String     @unique @db.VarChar(220)
+  title     String     @db.VarChar(220)
+  category  String     @db.VarChar(80)
+  excerpt   String?    @db.VarChar(2000)
+  content   String?    @db.Text
+  image     String?    @db.VarChar(2000)
+  readTime  String?    @db.VarChar(40)
+  status    PostStatus @default(draft)
+  date      DateTime   @db.DateTime(3)
+  authorId  String?
+  author    User?      @relation(fields: [authorId], references: [id])
+  deletedAt DateTime?
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  @@index([status, date])
+  @@map("posts")
+}
+
+// ---------------------------------------------------------------------- pmb
+
+model PmbRegistration {
+  id             String    @id @default(uuid())
+  idempotencyKey String    @unique @db.VarChar(64)
+  name           String    @db.VarChar(160)
+  email          String    @db.VarChar(320)
+  phone          String    @db.VarChar(40)
+  school         String?   @db.VarChar(160)
+  program        String?   @db.VarChar(120)
+  message        String?   @db.Text
+  status         PmbStatus @default(baru)
+  deletedAt      DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([status, createdAt])
+  @@map("pmb_registrations")
+}
+
+// ------------------------------------------------------------------ gallery
+
+model GalleryItem {
+  id        String   @id @default(uuid())
+  image     String   @db.VarChar(2000)
+  caption   String?  @db.VarChar(500)
+  link      String?  @db.VarChar(2000)
+  createdAt DateTime @default(now())
+
+  @@map("gallery_items")
+}
+
+// -------------------------------------------------------------- subscribers
+
+model Subscriber {
+  id           String   @id @default(uuid())
+  email        String   @unique @db.VarChar(320)
+  subscribedAt DateTime @default(now())
+
+  @@map("subscribers")
+}
+
+// -------------------------------------------------------------------- stats
+
+model SiteStat {
+  id     String @id @default(uuid())
+  value  Int
+  suffix String @db.VarChar(20)
+  label  String @db.VarChar(160)
+  ord    Int    @default(0)
+
+  @@map("site_stats")
+}
+
+// ------------------------------------------------------------- site content
+
+// Singleton row: key = "main". data NULL = belum dikonfigurasi (no-fallback policy).
+model SiteContent {
+  key       String    @id @db.VarChar(64)
+  data      Json?
+  updatedAt DateTime  @updatedAt
+  updatedBy String?
+
+  @@map("site_content")
+}
+
+// -------------------------------------------------------------------- media
+
+model MediaAsset {
+  id        String   @id @default(uuid())
+  url       String   @db.VarChar(2000)
+  filename  String   @db.VarChar(255)
+  mimeType  String   @db.VarChar(120)
+  size      Int
+  alt       String?  @db.VarChar(500)
+  createdAt DateTime @default(now())
+
+  @@map("media_assets")
+}
+
+// -------------------------------------------------------------------- audit
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action    String   @db.VarChar(80)
+  entity    String   @db.VarChar(80)
+  entityId  String?  @db.VarChar(64)
+  metadata  Json?
+  ip        String?  @db.VarChar(64)
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@map("audit_logs")
+}

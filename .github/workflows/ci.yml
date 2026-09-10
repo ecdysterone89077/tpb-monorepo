@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build contracts
+        run: pnpm --filter @tpb/contracts build
+
+      - name: Prisma generate + validate
+        run: |
+          pnpm --filter @tpb/api prisma:generate
+          pnpm --filter @tpb/api exec prisma validate
+
+      - name: Typecheck
+        run: pnpm -r typecheck
+
+      - name: Build API
+        run: pnpm --filter @tpb/api build
+
+      - name: Build web
+        run: pnpm --filter @tpb/web build
+        env:
+          VITE_API_URL: /v1

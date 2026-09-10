@@ -1,0 +1,50 @@
+version: "3.9"
+
+services:
+  db:
+    image: mysql:8.0
+    container_name: tpb-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: tpb-root-dev-password
+      MYSQL_DATABASE: tpb
+      MYSQL_USER: tpb
+      MYSQL_PASSWORD: tpb-dev-password
+    ports:
+      - "3306:3306"
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    volumes:
+      - tpb-mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-ptpb-root-dev-password"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  api:
+    build: .
+    container_name: tpb-api
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: mysql://tpb:tpb-dev-password@db:3306/tpb
+      CORS_ORIGINS: http://localhost:8443,http://localhost:5173
+      JWT_ACCESS_SECRET: dev-only-change-me-access-secret-change-me
+      JWT_REFRESH_SECRET: dev-only-change-me-refresh-secret-change-me
+      COOKIE_SECURE: "false"
+      MEDIA_DIR: /data/uploads
+    ports:
+      - "3000:3000"
+    volumes:
+      - tpb-uploads:/data/uploads
+    command: sh -c "npx prisma migrate deploy && node dist/main.js"
+
+volumes:
+  tpb-mysql-data:
+  tpb-uploads:

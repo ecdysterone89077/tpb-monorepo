@@ -1,0 +1,54 @@
+name: Deploy Production
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    # GitHub Environment "production" = manual approval gate
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build contracts + API
+        run: |
+          pnpm --filter @tpb/contracts build
+          pnpm --filter @tpb/api prisma:generate
+          pnpm --filter @tpb/api build
+
+      - name: Build web (production API URL)
+        run: pnpm --filter @tpb/web build
+        env:
+          VITE_API_URL: ${{ vars.PROD_API_URL }}
+
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          script: |
+            set -e
+            cd ${{ secrets.DEPLOY_PATH }}
+            git fetch --tags && git checkout ${{ github.ref_name }}
+            pnpm install --frozen-lockfile
+            pnpm --filter @tpb/api prisma:deploy
+            pnpm --filter @tpb/contracts build
+            pnpm --filter @tpb/api build
+            pnpm --filter @tpb/web build
+            (pm2 reload tpb-api || pm2 start ecosystem.config.cjs)
+            curl -fsS http://127.0.0.1:3000/v1/health
