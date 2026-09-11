@@ -16,7 +16,7 @@ function errMsg(r: Response, body: any): string {
   return `Permintaan gagal (HTTP ${r.status}).`;
 }
 
-async function parse<T>(r: Response): Promise<T> {
+async function parseResp<T>(r: Response): Promise<T> {
   const text = await r.text();
   let body: any = null;
   try { body = text ? JSON.parse(text) : null; } catch { body = null; }
@@ -28,7 +28,7 @@ async function refreshOnce(): Promise<boolean> {
   try {
     const r = await fetch(`${BASE}/auth/refresh`, { method: "POST", credentials: "include" });
     if (!r.ok) return false;
-    const data = await parse<{ token: string }>(r);
+    const data = await parseResp<{ token: string }>(r);
     accessToken = data.token;
     return true;
   } catch {
@@ -51,10 +51,21 @@ async function request<T>(path: string, init: RequestInit = {}, retry = true): P
     if (ok) return request<T>(path, init, false);
     accessToken = null;
   }
-  return parse<T>(r);
+  return parseResp<T>(r);
 }
 
 const jsonInit = (body: unknown, method = "POST"): RequestInit => ({ method, body: JSON.stringify(body) });
+
+export type PaginationMeta = { limit: number; offset: number; total: number; hasMore: boolean };
+export type PageParams = { limit?: number; offset?: number };
+
+function pageQuery(params?: PageParams): string {
+  if (!params) return "";
+  const parts: string[] = [];
+  if (params.limit != null) parts.push(`limit=${params.limit}`);
+  if (params.offset != null) parts.push(`offset=${params.offset}`);
+  return parts.length ? `?${parts.join("&")}` : "";
+}
 
 export const api = {
   /* ------------------------------------------------------------ auth */
@@ -106,14 +117,15 @@ export const api = {
 
   /* ---------------------------------------------------------- posts */
 
-  async listPublic(): Promise<Post[]> {
-    const d = await request<{ posts: Post[]; pagination?: { limit: number; offset: number; total: number; hasMore: boolean } }>(`/posts`);
+  async listPublic(params?: PageParams): Promise<Post[]> {
+    const d = await request<{ posts: Post[] }>(`/posts${pageQuery(params)}`);
     return d.posts;
   },
 
-  async listAll(): Promise<Post[]> {
-    const d = await request<{ posts: Post[] }>(`/posts?all=1`);
-    return d.posts;
+  async listAll(params?: PageParams): Promise<{ posts: Post[]; pagination: PaginationMeta }> {
+    const q = pageQuery(params);
+    const sep = q ? "&" : "?";
+    return request<{ posts: Post[]; pagination: PaginationMeta }>(`/posts${q}${sep}all=1`);
   },
 
   async getPost(id: string): Promise<Post | null> {
@@ -144,9 +156,8 @@ export const api = {
     return d.registration;
   },
 
-  async listPmb(): Promise<Registration[]> {
-    const d = await request<{ registrations: Registration[] }>(`/pmb`);
-    return d.registrations;
+  async listPmb(params?: PageParams): Promise<{ registrations: Registration[]; pagination: PaginationMeta }> {
+    return request<{ registrations: Registration[]; pagination: PaginationMeta }>(`/pmb${pageQuery(params)}`);
   },
 
   async setPmbStatus(id: string, status: Registration["status"]): Promise<Registration> {
@@ -165,9 +176,8 @@ export const api = {
     return d.subscriber;
   },
 
-  async listSubscribers(): Promise<Subscriber[]> {
-    const d = await request<{ subscribers: Subscriber[] }>(`/subscribers`);
-    return d.subscribers;
+  async listSubscribers(params?: PageParams): Promise<{ subscribers: Subscriber[]; pagination: PaginationMeta }> {
+    return request<{ subscribers: Subscriber[]; pagination: PaginationMeta }>(`/subscribers${pageQuery(params)}`);
   },
 
   /* -------------------------------------------------- stats + gallery */
@@ -182,9 +192,8 @@ export const api = {
     return d.stats;
   },
 
-  async listGallery(): Promise<GalleryItem[]> {
-    const d = await request<{ gallery: GalleryItem[]; pagination?: { limit: number; offset: number; total: number; hasMore: boolean } }>(`/gallery`);
-    return d.gallery;
+  async listGallery(params?: PageParams): Promise<{ gallery: GalleryItem[]; pagination: PaginationMeta }> {
+    return request<{ gallery: GalleryItem[]; pagination: PaginationMeta }>(`/gallery${pageQuery(params)}`);
   },
 
   async addGallery(input: { image: string; caption?: string; link?: string | null }): Promise<GalleryItem> {
@@ -198,9 +207,8 @@ export const api = {
 
   /* -------------------------------------------------- audit + media */
 
-  async listAudit(): Promise<AuditEntry[]> {
-    const d = await request<{ audit: AuditEntry[] }>(`/audit`);
-    return d.audit;
+  async listAudit(params?: PageParams): Promise<{ audit: AuditEntry[]; pagination: PaginationMeta }> {
+    return request<{ audit: AuditEntry[]; pagination: PaginationMeta }>(`/audit${pageQuery(params)}`);
   },
 
   async uploadMedia(file: File): Promise<MediaAsset> {
@@ -209,16 +217,15 @@ export const api = {
     const r = await fetch(`${BASE}/media/upload`, { method: "POST", body: fd, credentials: "include", headers: authHeaders() });
     if (r.status === 401 && accessToken && await refreshOnce()) {
       const retry = await fetch(`${BASE}/media/upload`, { method: "POST", body: fd, credentials: "include", headers: authHeaders() });
-      const d = await parse<{ item: MediaAsset }>(retry);
+      const d = await parseResp<{ item: MediaAsset }>(retry);
       return d.item;
     }
-    const d = await parse<{ item: MediaAsset }>(r);
+    const d = await parseResp<{ item: MediaAsset }>(r);
     return d.item;
   },
 
-  async listMedia(): Promise<MediaAsset[]> {
-    const d = await request<{ media: MediaAsset[] }>(`/media`);
-    return d.media;
+  async listMedia(params?: PageParams): Promise<{ media: MediaAsset[]; pagination: PaginationMeta }> {
+    return request<{ media: MediaAsset[]; pagination: PaginationMeta }>(`/media${pageQuery(params)}`);
   },
 
   async removeMedia(id: string): Promise<void> {
@@ -227,9 +234,8 @@ export const api = {
 
   /* ---------------------------------------------- users + dashboard */
 
-  async listUsers(): Promise<AdminUser[]> {
-    const d = await request<{ users: AdminUser[] }>(`/users`);
-    return d.users;
+  async listUsers(params?: PageParams): Promise<{ users: AdminUser[]; pagination: PaginationMeta }> {
+    return request<{ users: AdminUser[]; pagination: PaginationMeta }>(`/users${pageQuery(params)}`);
   },
 
   async createUser(input: { name: string; email: string; password: string; role: AdminUser["role"] }): Promise<AdminUser> {

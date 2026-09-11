@@ -3,8 +3,12 @@ import { CallHandler, ExecutionContext, NestInterceptor } from "@nestjs/common";
 import { Observable, tap } from "rxjs";
 import { PrismaService } from "./prisma.service";
 
-// Kunci yang selalu di-redaksi; PMB `message` adalah PII dan tidak pernah di-log.
-const REDACT_KEYS = new Set(["password", "passwordhash", "token", "refreshtoken", "accesstoken", "secret", "authorization"]);
+// Kunci yang selalu di-redaksi; PII dan kredensial tidak pernah di-log mentah.
+const REDACT_KEYS = new Set([
+  "password", "passwordhash", "token", "refreshtoken", "accesstoken", "secret",
+  "authorization", "email", "phone", "name", "school", "program", "address",
+  "message", "idempotencykey", "cookie", "cookies", "apikey", "api_key",
+]);
 
 const redact = (obj: unknown, depth = 0): unknown => {
   if (depth > 4 || obj === null || typeof obj !== "object") return obj;

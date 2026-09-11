@@ -78,7 +78,10 @@ export class AuthController {
       next = await this.prisma.$transaction(async (tx) => {
         const revoked = await tx.refreshToken.updateMany({ where: { id: current.id, revokedAt: null }, data: { revokedAt: new Date() } });
         if (revoked.count !== 1) throw new UnauthorizedException("Refresh token tidak valid.");
-        return tx.refreshToken.create({ data: { tokenHash: hashToken(nextRaw), userId: current.userId, expiresAt: new Date(Date.now() + REFRESH_TTL_MS) } });
+        const created = await tx.refreshToken.create({ data: { tokenHash: hashToken(nextRaw), userId: current.userId, expiresAt: new Date(Date.now() + REFRESH_TTL_MS) } });
+        // Populate the replacedById link for replay-detection traceability.
+        await tx.refreshToken.update({ where: { id: current.id }, data: { replacedById: created.id } });
+        return created;
       }, { isolationLevel: "Serializable" });
     } catch (error) {
       if (error instanceof UnauthorizedException) throw error;

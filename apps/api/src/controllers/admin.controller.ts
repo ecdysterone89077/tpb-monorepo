@@ -150,7 +150,7 @@ export class AdminController {
 
   @Delete("media/:id")
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles("ADMIN", "EDITOR", "OPERATOR")
+  @Roles("ADMIN")
   async removeMedia(@Param("id") id: string) {
     const asset = await this.prisma.mediaAsset.findUnique({ where: { id } });
     if (asset) {

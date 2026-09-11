@@ -49,7 +49,7 @@ describe("AuditInterceptor", () => {
     await run(i, makeCtx({ method: "PUT", routePath: "/v1/users/:id", body: { password: "supersecret", name: "A" }, params: { id: "u9" } }));
     const md = prisma.auditLog.create.mock.calls[0][0].data.metadata;
     expect(md.password).toBe("[redacted]");
-    expect(md.name).toBe("A");
+    expect(md.name).toBe("[redacted]");
   });
 
   it("nested passwordHash + token di-redaksi", async () => {

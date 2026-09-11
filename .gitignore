@@ -21,3 +21,6 @@ tools/supabase-migration/out/
 .DS_Store
 Thumbs.db
 *.log
+
+# Claude Code session data
+.claude/

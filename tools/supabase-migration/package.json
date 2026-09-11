@@ -10,7 +10,8 @@
   },
   "dependencies": {
     "@prisma/client": "^6.2.0",
-    "@supabase/supabase-js": "^2.47.0"
+    "@supabase/supabase-js": "^2.47.0",
+    "@tpb/contracts": "workspace:*"
   },
   "devDependencies": {
     "prisma": "^6.2.0",

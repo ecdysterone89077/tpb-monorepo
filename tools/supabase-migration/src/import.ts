@@ -6,6 +6,7 @@ import { PrismaClient } from "@prisma/client";
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { SiteContentSchema } from "@tpb/contracts";
 
 const prisma = new PrismaClient();
 
@@ -107,9 +108,18 @@ async function main() {
 
   const content = readJson("content.json");
   assertSource(manifest, "content", content);
-  const contentRow = await prisma.siteContent.upsert({ where: { key: "main" }, create: { key: "main", data: content }, update: { data: content } });
-  const contentOk = (content == null) === (contentRow.data == null);
-  results.content = { expected: content == null ? 0 : 1, actual: contentRow?.data != null ? 1 : 0, status: contentOk ? "ok" : "mismatch" };
+  // Validate before writing: the public site and the API both reject malformed SiteContent.
+  let contentData: unknown = null;
+  if (content != null) {
+    const parsed = SiteContentSchema.safeParse(content);
+    if (!parsed.success) {
+      throw new Error(`content.json tidak sesuai SiteContentSchema: ${parsed.error.issues.map((i: any) => `${i.path.join(".")}: ${i.message}`).join("; ")}`);
+    }
+    contentData = parsed.data;
+  }
+  const contentRow = await prisma.siteContent.upsert({ where: { key: "main" }, create: { key: "main", data: contentData as any }, update: { data: contentData as any } });
+  const contentOk = (contentData == null) === (contentRow.data == null);
+  results.content = { expected: contentData == null ? 0 : 1, actual: contentRow?.data != null ? 1 : 0, status: contentOk ? "ok" : "mismatch" };
 
   // stats: stored inside content JSON in the legacy system; also importable standalone
   const stats = readJson("stats.json");

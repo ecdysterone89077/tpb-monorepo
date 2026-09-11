@@ -99,9 +99,13 @@ export type SiteContent = {
     alumni: { kicker: string; title: string; quote: string; name: string; role: string; stats: { v: string; l: string }[] };
   };
   news: { kicker: string; title: string };
-  cta: { title: string; body: string; primary: string; secondary: string };
+  cta: { title: string; body: string; primary: string; secondary: string; secondaryHref: string };
   footer: {
     newsletterTitle: string;
+    infoTitle: string;
+    quickLinksTitle: string;
+    galleryTitle: string;
+    submitLabel: string;
     socials: { facebook: string; twitter: string; youtube: string; linkedin: string };
     contact: { phone: string; email: string; address: string };
     quickLinks: { label: string; href: string }[];
@@ -244,9 +248,9 @@ export const UserUpdateSchema = z.object({
 });
 
 export const GalleryInputSchema = z.object({
-  image: z.string().url().max(2000),
+  image: z.string().min(1).max(2000),
   caption: z.string().max(500).optional(),
-  link: z.string().url().max(2000).nullable().optional(),
+  link: z.string().max(2000).nullable().optional().refine((v) => !v || /^https?:\/\//.test(v) || v.startsWith("/"), { message: "URL tautan tidak valid" }),
 });
 
 export const StatsSchema = z.object({
@@ -286,8 +290,8 @@ export const SiteContentSchema = z.object({
   pengabdian: z.object({ programDesa: z.object({ kicker: z.string().max(300), title: z.string().max(500), desa: z.array(z.object({ name: z.string().max(300), body: z.string().max(3000) })).max(100) }), kemitraan: z.object({ kicker: z.string().max(300), title: z.string().max(500), mitra: TextListSchema }), kegiatan: z.object({ kicker: z.string().max(300), title: z.string().max(500), items: z.array(z.object({ t: z.string().max(100), d: z.string().max(3000) })).max(100) }) }),
   kemahasiswaan: z.object({ himpunan: z.object({ kicker: z.string().max(300), title: z.string().max(500), intro: z.string().max(5000), divisi: TextListSchema }), beasiswa: z.object({ kicker: z.string().max(300), title: z.string().max(500), items: z.array(z.object({ name: z.string().max(300), body: z.string().max(3000) })).max(100) }), prestasi: z.object({ kicker: z.string().max(300), title: z.string().max(500), items: TextListSchema }), alumni: z.object({ kicker: z.string().max(300), title: z.string().max(500), quote: z.string().max(5000), name: z.string().max(200), role: z.string().max(200), stats: z.array(MetricSchema).max(50) }) }),
   news: KickerTitleSchema,
-  cta: z.object({ title: z.string().max(500), body: z.string().max(3000), primary: z.string().max(160), secondary: z.string().max(160) }),
-  footer: z.object({ newsletterTitle: z.string().max(500), socials: z.object({ facebook: z.string().max(2000), twitter: z.string().max(2000), youtube: z.string().max(2000), linkedin: z.string().max(2000) }), contact: z.object({ phone: z.string().max(100), email: z.string().max(320), address: z.string().max(1000) }), quickLinks: z.array(z.object({ label: z.string().max(200), href: z.string().max(2000) })).max(100), copyright: z.string().max(500), tagline: z.string().max(500) }),
+  cta: z.object({ title: z.string().max(500), body: z.string().max(3000), primary: z.string().max(160), secondary: z.string().max(160), secondaryHref: z.string().max(2000) }),
+  footer: z.object({ newsletterTitle: z.string().max(500), infoTitle: z.string().max(200), quickLinksTitle: z.string().max(200), galleryTitle: z.string().max(200), submitLabel: z.string().max(80), socials: z.object({ facebook: z.string().max(2000), twitter: z.string().max(2000), youtube: z.string().max(2000), linkedin: z.string().max(2000) }), contact: z.object({ phone: z.string().max(100), email: z.string().max(320), address: z.string().max(1000) }), quickLinks: z.array(z.object({ label: z.string().max(200), href: z.string().max(2000) })).max(100), copyright: z.string().max(500), tagline: z.string().max(500) }),
 });
 export type ValidatedSiteContent = z.infer<typeof SiteContentSchema>;
 

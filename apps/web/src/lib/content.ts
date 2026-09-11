@@ -1,6 +1,6 @@
 import { createContext, createElement, useContext, useEffect, useState, type ReactNode } from "react";
 import { api } from "./api";
-import type { SiteContent } from "@tpb/contracts";
+import { SiteContentSchema, type SiteContent } from "@tpb/contracts";
 
 type ContentState =
   | { status: "loading" }
@@ -23,7 +23,16 @@ export function ContentProvider({ children }: { children: ReactNode }) {
     setState({ status: "loading" });
     try {
       const content = await api.getContent();
-      setState(content ? { status: "ready", content } : { status: "empty" });
+      if (content == null) {
+        setState({ status: "empty" });
+        return;
+      }
+      const parsed = SiteContentSchema.safeParse(content);
+      if (!parsed.success) {
+        setState({ status: "error", message: "Konten situs tersimpan tidak valid. Perbaiki melalui panel admin." });
+        return;
+      }
+      setState({ status: "ready", content: parsed.data as SiteContent });
     } catch (e: any) {
       setState({ status: "error", message: e?.message ?? "Gagal memuat konten." });
     }

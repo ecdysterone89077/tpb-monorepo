@@ -1,7 +1,8 @@
 import { PaginationSchema, type Pagination } from "@tpb/contracts";
+import { parse } from "./zod";
 
 export const parsePagination = (query: unknown): Pagination =>
-  PaginationSchema.parse(query ?? {});
+  parse(PaginationSchema as any, query ?? {}) as Pagination;
 
 export const paginationMeta = (pagination: Pagination, total: number) => ({
   limit: pagination.limit,
