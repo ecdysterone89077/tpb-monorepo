@@ -46,9 +46,10 @@ jobs:
             cd ${{ secrets.DEPLOY_PATH }}
             git fetch --tags && git checkout ${{ github.ref_name }}
             pnpm install --frozen-lockfile
+            test -n "${{ vars.PROD_API_URL }}"
             pnpm --filter @tpb/api prisma:deploy
             pnpm --filter @tpb/contracts build
             pnpm --filter @tpb/api build
             VITE_API_URL="${{ vars.PROD_API_URL }}" pnpm --filter @tpb/web build
-            (pm2 reload tpb-api || pm2 start ecosystem.config.cjs)
-            curl -fsS http://127.0.0.1:3000/v1/health
+            (pm2 reload ecosystem.config.cjs --only tpb-api --env production --update-env || pm2 start ecosystem.config.cjs --env production)
+            curl --fail --retry 10 --retry-delay 3 http://127.0.0.1:3000/v1/health

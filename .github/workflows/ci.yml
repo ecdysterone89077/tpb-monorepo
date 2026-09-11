@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, develop]
+    branches: [master, main, develop]
   pull_request:
 
 jobs:
@@ -39,8 +39,40 @@ jobs:
           # validate/migrate diff tidak membuka koneksi; nilai hanya harus ada.
           DATABASE_URL: mysql://ci:ci@localhost:3306/ci_validate
 
+      - name: Start MySQL
+        run: docker compose up -d db
+
+      - name: Wait for MySQL
+        run: |
+          for i in {1..30}; do
+            docker compose exec -T db mysqladmin ping -h localhost -u root -p"tpb-root-dev-password" && exit 0
+            sleep 2
+          done
+          exit 1
+
+      - name: Apply MySQL migrations
+        run: pnpm --filter @tpb/api prisma:deploy
+        env:
+          DATABASE_URL: mysql://tpb:tpb-dev-password@localhost:3306/tpb
+
       - name: Unit tests (API, mocked)
         run: pnpm --filter @tpb/api test -- --ci
+
+      - name: API integration smoke test
+        run: |
+          DATABASE_URL=mysql://tpb:tpb-dev-password@localhost:3306/tpb \
+          NODE_ENV=test JWT_ACCESS_SECRET=ci-test-secret-please-replace \
+          CORS_ORIGINS=http://localhost:5173 COOKIE_SECURE=false MEDIA_DIR=/tmp/tpb-media \
+          pnpm --filter @tpb/api build
+          DATABASE_URL=mysql://tpb:tpb-dev-password@localhost:3306/tpb \
+          NODE_ENV=test JWT_ACCESS_SECRET=ci-test-secret-please-replace \
+          CORS_ORIGINS=http://localhost:5173 COOKIE_SECURE=false MEDIA_DIR=/tmp/tpb-media \
+          PORT=3000 node apps/api/dist/main.js > /tmp/tpb-api.log 2>&1 &
+          api_pid=$!
+          trap 'kill $api_pid || true' EXIT
+          for i in {1..30}; do curl --fail --silent http://127.0.0.1:3000/v1/health && exit 0; sleep 2; done
+          cat /tmp/tpb-api.log
+          exit 1
 
       - name: Verify migrations (SQL against schema)
         run: |

@@ -221,6 +221,10 @@ export const api = {
     return d.media;
   },
 
+  async removeMedia(id: string): Promise<void> {
+    await request(`/media/${encodeURIComponent(id)}`, { method: "DELETE" });
+  },
+
   /* ---------------------------------------------- users + dashboard */
 
   async listUsers(): Promise<AdminUser[]> {

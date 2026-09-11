@@ -15,6 +15,7 @@
     "db:migrate": "pnpm --filter @tpb/api prisma:migrate",
     "db:migrate:create": "pnpm --filter @tpb/api prisma:migrate --name",
     "db:migrate:deploy": "pnpm --filter @tpb/api prisma:deploy",
+    "api:preflight": "pnpm --filter @tpb/api build && node -e \"require('./apps/api/dist/config.js')\"",
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm --filter @tpb/api test",

@@ -6,9 +6,10 @@ import { BootstrapSchema, LoginSchema, type Role } from "@tpb/contracts";
 import { PrismaService } from "../prisma.service";
 import { JwtAuthGuard, RequestUser, hashToken, newRefreshToken, safeUser, verifyPassword } from "../auth";
 import { parse } from "../zod";
+import { config } from "../config";
 
-const ACCESS_TTL_SECONDS = Number(process.env.JWT_ACCESS_TTL_SECONDS || 900);
-const REFRESH_TTL_MS = Number(process.env.JWT_REFRESH_TTL_DAYS || 30) * 24 * 60 * 60 * 1000;
+const ACCESS_TTL_SECONDS = config.jwtAccessTtlSeconds;
+const REFRESH_TTL_MS = config.jwtRefreshTtlDays * 24 * 60 * 60 * 1000;
 
 type CookieRequest = Request & { user?: RequestUser };
 
@@ -17,15 +18,12 @@ export class AuthController {
   constructor(private readonly prisma: PrismaService, private readonly jwt: JwtService) {}
 
   private cookieOptions() {
-    if (process.env.NODE_ENV === "production" && process.env.COOKIE_SECURE !== "true") {
-      throw new Error("COOKIE_SECURE=true wajib di production.");
-    }
     return {
       httpOnly: true,
-      secure: process.env.COOKIE_SECURE === "true",
+      secure: config.cookieSecure,
       sameSite: "lax" as const,
       path: "/v1/auth",
-      domain: process.env.COOKIE_DOMAIN || undefined,
+      domain: config.cookieDomain,
       maxAge: REFRESH_TTL_MS,
     };
   }
@@ -36,7 +34,7 @@ export class AuthController {
       data: { tokenHash: hashToken(rawRefresh), userId: user.id, expiresAt: new Date(Date.now() + REFRESH_TTL_MS) },
     });
     const accessToken = await this.jwt.signAsync(safeUser(user));
-    res.cookie(process.env.COOKIE_NAME || "tpb_refresh", rawRefresh, this.cookieOptions());
+    res.cookie(config.cookieName, rawRefresh, this.cookieOptions());
     return { token: accessToken, expiresIn: ACCESS_TTL_SECONDS, user };
   }
 
@@ -67,7 +65,7 @@ export class AuthController {
   @Post("refresh")
   @HttpCode(200)
   async refresh(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
-    const name = process.env.COOKIE_NAME || "tpb_refresh";
+    const name = config.cookieName;
     const raw = req.cookies?.[name] as string | undefined;
     if (!raw) throw new UnauthorizedException("Refresh token diperlukan.");
     const current = await this.prisma.refreshToken.findUnique({ where: { tokenHash: hashToken(raw) }, include: { user: true } });
@@ -75,11 +73,17 @@ export class AuthController {
       throw new UnauthorizedException("Refresh token tidak valid.");
     }
     const nextRaw = newRefreshToken();
-    const next = await this.prisma.$transaction(async (tx) => {
-      const revoked = await tx.refreshToken.updateMany({ where: { id: current.id, revokedAt: null }, data: { revokedAt: new Date() } });
-      if (revoked.count !== 1) throw new UnauthorizedException("Refresh token tidak valid.");
-      return tx.refreshToken.create({ data: { tokenHash: hashToken(nextRaw), userId: current.userId, expiresAt: new Date(Date.now() + REFRESH_TTL_MS) } });
-    }, { isolationLevel: "Serializable" });
+    let next: unknown;
+    try {
+      next = await this.prisma.$transaction(async (tx) => {
+        const revoked = await tx.refreshToken.updateMany({ where: { id: current.id, revokedAt: null }, data: { revokedAt: new Date() } });
+        if (revoked.count !== 1) throw new UnauthorizedException("Refresh token tidak valid.");
+        return tx.refreshToken.create({ data: { tokenHash: hashToken(nextRaw), userId: current.userId, expiresAt: new Date(Date.now() + REFRESH_TTL_MS) } });
+      }, { isolationLevel: "Serializable" });
+    } catch (error) {
+      if (error instanceof UnauthorizedException) throw error;
+      throw new UnauthorizedException("Refresh token tidak valid.");
+    }
     void next;
     const user = safeUser(current.user);
     const accessToken = await this.jwt.signAsync(user);
@@ -90,7 +94,7 @@ export class AuthController {
   @Post("logout")
   @HttpCode(200)
   async logout(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
-    const name = process.env.COOKIE_NAME || "tpb_refresh";
+    const name = config.cookieName;
     const raw = req.cookies?.[name] as string | undefined;
     if (raw) await this.prisma.refreshToken.updateMany({ where: { tokenHash: hashToken(raw), revokedAt: null }, data: { revokedAt: new Date() } });
     res.clearCookie(name, this.cookieOptions());
@@ -102,7 +106,7 @@ export class AuthController {
   @HttpCode(200)
   async logoutAll(@Req() req: CookieRequest, @Res({ passthrough: true }) res: Response) {
     if (req.user) await this.prisma.refreshToken.updateMany({ where: { userId: req.user.id, revokedAt: null }, data: { revokedAt: new Date() } });
-    res.clearCookie(process.env.COOKIE_NAME || "tpb_refresh", this.cookieOptions());
+    res.clearCookie(config.cookieName, this.cookieOptions());
     return { ok: true };
   }
 

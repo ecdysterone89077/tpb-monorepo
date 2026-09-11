@@ -39,7 +39,7 @@ export class AuditInterceptor implements NestInterceptor {
                 entity: route,
                 entityId: (req.params?.id as string) ?? null,
                 metadata: skipBody ? null : (redact(req.body) as any),
-                ip: (req.headers["x-forwarded-for"]?.toString().split(",")[0] ?? req.socket?.remoteAddress ?? null) || null,
+                ip: req.ip || req.socket?.remoteAddress || null,
               },
             })
             .catch(() => {});

@@ -4,11 +4,11 @@ WORKDIR /repo
 
 RUN corepack enable
 
-COPY pnpm-workspace.yaml package.json tsconfig.base.json ./
+COPY pnpm-workspace.yaml package.json pnpm-lock.yaml tsconfig.base.json ./
 COPY packages/contracts/package.json packages/contracts/
 COPY apps/api/package.json apps/api/
 
-RUN pnpm install --frozen-lockfile=false --filter @tpb/api...
+RUN pnpm install --frozen-lockfile --filter @tpb/api...
 
 COPY packages ./packages
 COPY apps/api ./apps/api

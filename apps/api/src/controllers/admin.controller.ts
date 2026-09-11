@@ -1,12 +1,14 @@
-import { Body, Controller, Delete, Get, Param, Post, Put, Query, Req, UploadedFile, UseGuards, UseInterceptors } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Delete, Get, Param, Post, Put, Query, Req, UploadedFile, UseGuards, UseInterceptors } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
 import { hash } from "@node-rs/argon2";
-import { diskStorage } from "multer";
-import { extname, resolve } from "node:path";
-import { mkdirSync } from "node:fs";
+import { memoryStorage } from "multer";
+import { basename, join } from "node:path";
 import { randomUUID } from "node:crypto";
+import { unlink, writeFile } from "node:fs/promises";
 import type { Request } from "express";
 import { UserInputSchema, UserUpdateSchema } from "@tpb/contracts";
+import { config } from "../config";
+import { detectMediaType } from "../media";
 import { PrismaService } from "../prisma.service";
 import { JwtAuthGuard, Roles, RolesGuard, type RequestUser } from "../auth";
 import { parse } from "../zod";
@@ -14,9 +16,8 @@ import { parsePagination, paginationMeta } from "../pagination";
 
 type AuthRequest = Request & { user?: RequestUser };
 
-const MEDIA_DIR = resolve(process.env.MEDIA_DIR || "uploads");
-const MEDIA_MAX_MB = Number(process.env.MEDIA_MAX_MB || 10);
-mkdirSync(MEDIA_DIR, { recursive: true });
+const MEDIA_DIR = config.mediaDir;
+const MEDIA_MAX_MB = config.mediaMaxMb;
 
 @Controller()
 export class AdminController {
@@ -124,23 +125,39 @@ export class AdminController {
   @Roles("ADMIN", "EDITOR", "OPERATOR")
   @UseInterceptors(
     FileInterceptor("file", {
-      storage: diskStorage({
-        destination: (_req, _file, cb) => cb(null, MEDIA_DIR),
-        filename: (_req, file, cb) => cb(null, `${randomUUID()}${extname(file.originalname).toLowerCase()}`),
-      }),
-      limits: { fileSize: MEDIA_MAX_MB * 1024 * 1024 },
-      fileFilter: (_req, file, cb) => {
-        const ok = ["image/jpeg", "image/png", "image/webp", "image/gif", "application/pdf"].includes(file.mimetype);
-        cb(null, ok);
-      },
+      storage: memoryStorage(),
+      limits: { fileSize: MEDIA_MAX_MB * 1024 * 1024, files: 1 },
     }),
   )
   async uploadMedia(@UploadedFile() file: Express.Multer.File | undefined) {
-    if (!file) throw new Error("Berkas tidak diterima atau jenis berkas tidak diizinkan.");
-    const asset = await this.prisma.mediaAsset.create({
-      data: { url: `/media/${file.filename}`, filename: file.originalname, mimeType: file.mimetype, size: file.size, alt: null },
-    });
-    return { item: { ...asset, createdAt: asset.createdAt.toISOString() } };
+    if (!file) throw new BadRequestException("Berkas tidak diterima.");
+    const detected = detectMediaType(file.buffer);
+    if (!detected) throw new BadRequestException("Jenis berkas tidak diizinkan. Gunakan JPEG, PNG, GIF, WebP, atau PDF.");
+    const filename = `${randomUUID()}${detected.ext}`;
+    const stored = join(MEDIA_DIR, filename);
+    const originalName = file.originalname.trim().slice(0, 255);
+    await writeFile(stored, file.buffer, { flag: "wx" });
+    try {
+      const asset = await this.prisma.mediaAsset.create({
+        data: { url: `/media/${filename}`, filename: originalName, mimeType: detected.mime, size: file.size, alt: null },
+      });
+      return { item: { ...asset, createdAt: asset.createdAt.toISOString() } };
+    } catch (error) {
+      await unlink(stored).catch(() => {});
+      throw error;
+    }
+  }
+
+  @Delete("media/:id")
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles("ADMIN", "EDITOR", "OPERATOR")
+  async removeMedia(@Param("id") id: string) {
+    const asset = await this.prisma.mediaAsset.findUnique({ where: { id } });
+    if (asset) {
+      await unlink(join(MEDIA_DIR, basename(asset.url))).catch(() => {});
+      await this.prisma.mediaAsset.delete({ where: { id } });
+    }
+    return { ok: true };
   }
 
   @Get("media")

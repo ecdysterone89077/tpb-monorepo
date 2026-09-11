@@ -1,4 +1,5 @@
-// PM2 process definition for the NestJS API
+// PM2 process definition for the NestJS API.
+// Provision production secrets in the host environment or secret manager before start.
 module.exports = {
   apps: [
     {
@@ -8,7 +9,9 @@ module.exports = {
       instances: 1,
       autorestart: true,
       max_memory_restart: "512M",
-      env: {
+      kill_timeout: 5000,
+      listen_timeout: 10000,
+      env_production: {
         NODE_ENV: "production",
         PORT: 3000,
       },

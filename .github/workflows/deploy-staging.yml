@@ -56,11 +56,13 @@ jobs:
           script: |
             set -e
             cd ${{ secrets.DEPLOY_PATH }}
-            git pull --ff-only origin develop
+            git fetch origin develop
+            git checkout --force develop
+            git reset --hard origin/develop
             pnpm install --frozen-lockfile
             pnpm --filter @tpb/api prisma:deploy
             pnpm --filter @tpb/contracts build
             pnpm --filter @tpb/api build
             VITE_API_URL="${{ vars.STAGING_API_URL }}" pnpm --filter @tpb/web build
-            (pm2 reload tpb-api || pm2 start ecosystem.config.cjs)
-            curl -fsS http://127.0.0.1:3000/v1/health
+            (pm2 reload ecosystem.config.cjs --only tpb-api --env production --update-env || pm2 start ecosystem.config.cjs --env production)
+            curl --fail --retry 10 --retry-delay 3 http://127.0.0.1:3000/v1/health
