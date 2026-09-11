@@ -11,45 +11,9 @@ jobs:
     # GitHub Environment "production" = manual approval gate
     environment: production
     steps:
-      - uses: actions/checkout@v7
-
-      - uses: pnpm/action-setup@v6
-        with:
-          version: 9.15.0
-
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 22
-          cache: pnpm
-
-      - run: pnpm install --frozen-lockfile
-
-      - name: Build contracts + API
+      - name: Trigger aaPanel Webhook (production)
         run: |
-          pnpm --filter @tpb/contracts build
-          pnpm --filter @tpb/api prisma:generate
-          pnpm --filter @tpb/api build
-
-      - name: Build web (production API URL)
-        run: pnpm --filter @tpb/web build
-        env:
-          VITE_API_URL: ${{ vars.PROD_API_URL }}
-
-      - name: Deploy over SSH
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_KEY }}
-          script: |
-            set -e
-            cd ${{ secrets.DEPLOY_PATH }}
-            git fetch --tags && git checkout ${{ github.ref_name }}
-            pnpm install --frozen-lockfile
-            test -n "${{ vars.PROD_API_URL }}"
-            pnpm --filter @tpb/api prisma:deploy
-            pnpm --filter @tpb/contracts build
-            pnpm --filter @tpb/api build
-            VITE_API_URL="${{ vars.PROD_API_URL }}" pnpm --filter @tpb/web build
-            (pm2 reload ecosystem.config.cjs --only tpb-api --env production --update-env || pm2 start ecosystem.config.cjs --env production)
-            curl --fail --retry 10 --retry-delay 3 http://127.0.0.1:3000/v1/health
+          curl -fsSL -X POST \
+            -H "Content-Type: application/json" \
+            -d '{"event":"deploy","ref":"${{ github.ref_name }}"}' \
+            "${{ secrets.AAPANEL_PRODUCTION_WEBHOOK_URL }}"

@@ -58,38 +58,82 @@ pnpm db:migrate:deploy
 
 ### Handover hosting
 
-Hosting team menyediakan Node.js ≥20, pnpm, MySQL 8.0, PM2 or another process manager, a persistent writable upload directory, and secrets environment. Before the first start, provision the complete `apps/api/.env` values through the host secret manager or a protected environment file owned by the API process; never commit it. Run `pnpm db:migrate:deploy`, build API/web, then start or reload the API through `ecosystem.config.cjs`:
+Hosting team menyediakan Node.js ≥20, pnpm, MySQL 8.0, PM2 or another process manager, a persistent writable upload directory, and secrets environment. Deployment dilakukan via **aaPanel** tanpa akses SSH.
+
+### aaPanel Webhook Deployment
+
+Konfigurasi Webhook di aaPanel (Website → Webhooks atau Plugin Webhooks) dengan script bash berikut. Script ini dijalankan otomatis oleh aaPanel setiap kali GitHub Actions memanggil webhook URL.
+
+**Staging** (triggered on push to `develop`):
 
 ```bash
+set -e
+cd /path/to/repo
+git fetch origin develop
+git checkout --force develop
+git reset --hard origin/develop
 pnpm install --frozen-lockfile
 pnpm db:migrate:deploy
 pnpm --filter @tpb/contracts build
 pnpm --filter @tpb/api build
-VITE_API_URL=https://api.example.test/v1 pnpm --filter @tpb/web build
-pm2 start ecosystem.config.cjs --env production
-# Subsequent releases:
-pm2 reload ecosystem.config.cjs --only tpb-api --update-env
+VITE_API_URL="https://staging-api.example.test/v1" pnpm --filter @tpb/web build
+pm2 reload ecosystem.config.cjs --only tpb-api --update-env || pm2 start ecosystem.config.cjs --env production
+curl --fail --retry 10 --retry-delay 3 http://127.0.0.1:3000/v1/health
 ```
 
-The PM2 file intentionally contains no secrets. `pm2 start ... --env production` selects only non-secret process settings; the hosting process must inject `DATABASE_URL`, `JWT_ACCESS_SECRET`, `CORS_ORIGINS`, cookie settings, `MEDIA_DIR`, and related variables before PM2 starts or reloads. Run `pnpm api:preflight` with the same environment before a production restart to fail closed on invalid configuration. Keep `MEDIA_DIR` outside the release directory so a release cleanup cannot remove uploaded files.
+**Production** (triggered on tag `v*`, requires manual approval):
 
-For GitHub Actions, configure these repository/environment values without placing them in source:
+```bash
+set -e
+cd /path/to/repo
+git fetch --tags && git checkout <tag>
+pnpm install --frozen-lockfile
+pnpm db:migrate:deploy
+pnpm --filter @tpb/contracts build
+pnpm --filter @tpb/api build
+VITE_API_URL="https://api.example.test/v1" pnpm --filter @tpb/web build
+pm2 reload ecosystem.config.cjs --only tpb-api --update-env || pm2 start ecosystem.config.cjs --env production
+curl --fail --retry 10 --retry-delay 3 http://127.0.0.1:3000/v1/health
+```
 
-- Secrets: `SSH_HOST`, `SSH_USER`, `SSH_KEY`, `DEPLOY_PATH`.
-- Environment variables: `STAGING_API_URL` in the `staging` environment and `PROD_API_URL` in the `production` environment.
-- The `production` environment should retain its required manual approval protection rule.
+### Secrets & Environment Variables
 
-The workflows perform source checkout/build on the server after SSH. The uploaded CI artifact is retained for traceability but is not the deployment payload; if immutable artifact deployment is preferred, replace the SSH rebuild with an explicit artifact transfer and release-directory/symlink strategy before production use.
+**GitHub Secrets** (dikonfigurasi di Settings → Secrets → Actions):
 
-Nginx or Caddy is required as a reverse proxy:
+| Secret | Keterangan |
+|---|---|
+| `AAPANEL_STAGING_WEBHOOK_URL` | URL webhook aaPanel untuk staging |
+| `AAPANEL_PRODUCTION_WEBHOOK_URL` | URL webhook aaPanel untuk production |
+
+**GitHub Environment Variables** (dikonfigurasi di Settings → Environments):
+
+| Variable | Environment | Keterangan |
+|---|---|---|
+| `STAGING_API_URL` | staging | URL API staging, contoh: `https://staging-api.example.test/v1` |
+| `PROD_API_URL` | production | URL API production, contoh: `https://api.example.test/v1` |
+
+Environment `production` harus memiliki protection rule dengan **required reviewers** (approval manual).
+
+**Server-side secrets** (dikonfigurasi di aaPanel):
+
+Sebelum start, provision complete `apps/api/.env` values: `DATABASE_URL`, `JWT_ACCESS_SECRET` (≥32 chars), `CORS_ORIGINS`, `COOKIE_SECURE=true`, `MEDIA_DIR` (absolute, writable, persistent di luar release directory), `TRUST_PROXY`. PM2 file tidak memuat rahasia — hosting harus inject variabel ini sebelum PM2 start/reload.
+
+Run `pnpm api:preflight` with the same environment before a production restart to fail closed on invalid configuration. Keep `MEDIA_DIR` outside the release directory so a release cleanup cannot remove uploaded files.
+
+Nginx via aaPanel Site Manager harus dikonfigurasi:
 
 - `/` menyajikan `apps/web/dist` sebagai static site.
 - `/v1/` meneruskan request ke API NestJS pada port 3000.
 - `/media/` meneruskan request ke API pada port 3000 (atau ke shared `MEDIA_DIR` bila host memilih static serving langsung).
 - Proxy harus meneruskan cookie dan header `Authorization`, serta mengatur HTTPS di sisi hosting.
 
-Buat `MEDIA_DIR` absolut, writable oleh user proses API, dan persisten di luar release directory. Workflow GitHub Actions hanya menyediakan template build/deploy; hosting team mengisi GitHub secrets, server, reverse proxy, TLS, DNS, database production, dan backup.
+Cara install: jalankan `bash <(curl -s https://www.aapanel.com/script/install-ubuntu-7.0_en.sh)` lalu ikuti wizard. Setelah aaPanel aktif, install Plugin Website atau Webhooks dari panel. Buat script deploy di atas sebagai webhook script, lalu salin URL webhook-nya ke GitHub Secrets.
 
+Hosting team menyediakan: Node.js ≥20 (install via aaPanel → App Store → Node.js), pnpm (`npm install -g pnpm`), MySQL 8.0 (install via aaPanel → App Store → MySQL), PM2 (`npm install -g pm2`), persistent writable upload directory, dan server environment.
+
+For GitHub Actions, configure repository/environment values without placing them in source. The production environment should retain its required manual approval protection rule.
+
+Frontend `VITE_API_URL` harus di-build dengan URL target yang benar (bukan localhost) — diatur langsung di script webhook aaPanel saat build.
 ## Alur Admin
 
 1. Buka `/#admin` — selama tabel `users` (MySQL) kosong, form **Bootstrap Admin** muncul (sekali pakai; paritas gerbang "akun pertama" sistem lama).
@@ -109,10 +153,10 @@ Service-role key **hanya** lewat environment variable — tidak pernah masuk rep
 
 ## Deployment
 
-- **Staging**: push ke branch `develop` → GitHub Actions build + deploy + `prisma migrate deploy` + health-check.
-- **Production**: tag `v*` → workflow sama dengan environment `production` (approval manual), lalu migrasi + deploy.
-- Frontend memakai `VITE_API_URL` per-environment (staging/produksi berbeda).
-
+- **Staging**: push ke branch `develop` → GitHub Actions POST webhook → aaPanel jalankan script deploy staging.
+- **Production**: push tag `v*` → GitHub Environment `production` → approval manual → POST webhook → aaPanel jalankan script deploy production.
+- Frontend memakai `VITE_API_URL` per-environment (staging/produksi berbeda), diatur di script webhook aaPanel.
+- Semua deploy melalui aaPanel Webhook — tidak ada SSH dari GitHub Actions.
 ## Struktur Otentikasi
 
 - JWT access token (15 menit) — di memori frontend, header `Authorization: Bearer`.
