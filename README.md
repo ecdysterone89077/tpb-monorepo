@@ -1,42 +1,75 @@
 # TPB Monorepo — UNU Purwokerto
 
-Monorepo privat untuk situs Program Studi Teknik Pertanian & Biosistem UNU Purwokerto:
+Monorepo untuk situs resmi Program Studi Teknik Pertanian & Biosistem UNU Purwokerto.
 
-- **`apps/web`** — Frontend React 19 + Vite 8 + Tailwind v4
-- **`apps/api`** — REST API NestJS 11 + Prisma + MySQL 8.0, prefix `/v1` (target: `https://api.tpb.unupurwokerto.ac.id/v1`)
-- **`packages/contracts`** — Tipe & skema request/response bersama (frontend ↔ backend)
-- **`tools/supabase-migration`** — Tooling migrasi data Supabase KV → MySQL (export → transform → import → reconcile)
-- **`.github/workflows`** — CI + deploy staging & production terpisah
+| Aplikasi | Keterangan |
+|---|---|
+| `apps/web` | Frontend React 19 + Vite 8 + Tailwind v4 |
+| `apps/api` | REST API NestJS 11 + Prisma + MySQL 8.0, prefix `/v1` |
+| `packages/contracts` | Tipe & skema Zod bersama (frontend ↔ backend) |
+| `tools/supabase-migration` | Tooling migrasi data Supabase KV → MySQL |
+| `.github/workflows` | CI (GitHub Actions) + deploy via aaPanel Webhook |
+
+---
 
 ## Prasyarat
 
-- Node.js ≥ 20 (rekomendasi 22)
-- pnpm ≥ 9 (`corepack enable`)
-- Docker (MySQL 8.0 lokal) atau MySQL sendiri
+| Tool | Versi minimum | Keterangan |
+|---|---|---|
+| Node.js | ≥ 20 (rekomendasi 22) | Runtime JavaScript |
+| pnpm | ≥ 9 | Jalankan `corepack enable` terlebih dahulu |
+| Docker | — | Untuk MySQL 8.0 lokal, atau gunakan MySQL sendiri |
+
+---
 
 ## Environment
 
-Salin setiap contoh environment ke file lokal/server yang sesuai. Jangan commit file `.env`:
+Salin setiap contoh environment ke file lokal/server yang sesuai. **Jangan pernah commit file `.env`.**
 
-- `apps/api/.env.example`: `NODE_ENV`, `PORT`, `DATABASE_URL`, JWT access secret/TTL, CORS allowlist, refresh-cookie settings, `MEDIA_DIR`, upload limit, and `TRUST_PROXY`.
-- `apps/web/.env.example`: public `VITE_API_URL` only; never put secrets in `VITE_*` variables.
-- `tools/supabase-migration/.env.example`: migration-only Supabase service-role key and MySQL URL. The service-role key is never used by the frontend.
+| File contoh | Isi |
+|---|---|
+| `apps/api/.env.example` | `NODE_ENV`, `PORT`, `DATABASE_URL`, JWT access secret & TTL, CORS allowlist, refresh-cookie settings, `MEDIA_DIR`, upload limit, `TRUST_PROXY` |
+| `apps/web/.env.example` | Hanya `VITE_API_URL` (publik); jangan pernah simpan rahasia di variabel `VITE_*` |
+| `tools/supabase-migration/.env.example` | Supabase service-role key (khusus migrasi) dan MySQL URL |
 
-Production must provide `DATABASE_URL`, `CORS_ORIGINS`, a strong `JWT_ACCESS_SECRET` (at least 32 characters), `COOKIE_SECURE=true`, a writable absolute `MEDIA_DIR`, and a correctly scoped `TRUST_PROXY` value (`false`, `true`, or a trusted proxy hop count). `COOKIE_DOMAIN` is optional and should only be set when the hosting domains require it. `VITE_API_URL` must be the versioned API origin/path for the target environment, for example `https://api.example.test/v1`; it must not be left at the localhost development value.
+### Variabel wajib produksi
 
-Database recovery is forward-fix only: do not edit or delete an applied migration. Before migration deployment, take the host's normal MySQL backup and record the release tag. If a migration or release fails, keep the previous application process running when possible, restore the database only through the hosting team's tested backup procedure when data integrity requires it, and create a new corrective migration for forward recovery. Verify `pnpm db:migrate:deploy` and `/v1/health` before reopening traffic. Uploaded media must be backed up separately from MySQL because it lives in `MEDIA_DIR`.
+| Variabel | Keterangan |
+|---|---|
+| `DATABASE_URL` | URL koneksi MySQL, contoh: `mysql://user:pass@host:3306/db` |
+| `CORS_ORIGINS` | Domain frontend yang diizinkan (dipisah koma) |
+| `JWT_ACCESS_SECRET` | Minimal 32 karakter, contoh: `openssl rand -hex 48` |
+| `COOKIE_SECURE` | `true` untuk produksi (HTTPS) |
+| `MEDIA_DIR` | Path absolut yang dapat ditulis, persisten di luar direktori rilis |
+| `TRUST_PROXY` | `false`, `true`, atau jumlah hop proxy tepercaya |
+| `COOKIE_DOMAIN` | Opsional; hanya jika domain hosting memerlukannya |
+| `VITE_API_URL` | URL API berversi, contoh: `https://api.tpb.unupurwokerto.ac.id/v1` (bukan localhost) |
+
+### Kebijakan pemulihan database
+
+Pemulihan database hanya melalui **forward-fix** — jangan edit atau hapus migration yang sudah diterapkan. Sebelum deploy migration, ambil backup MySQL normal dari host dan catat tag rilis. Jika migration atau rilis gagal:
+
+- Pertahankan proses aplikasi sebelumnya jika memungkinkan.
+- Pulihkan database hanya melalui prosedur backup tim hosting yang sudah diuji jika integritas data mengharuskan.
+- Buat migration korektif baru untuk pemulihan maju.
+- Verifikasi `pnpm db:migrate:deploy` dan `/v1/health` sebelum membuka kembali lalu lintas.
+
+Media yang diunggah harus dicadangkan secara terpisah dari MySQL karena berada di `MEDIA_DIR`.
+
+---
 
 ## Setup Pengembangan
 
 ```bash
-# 1. Docker MySQL 8.0 lokal
+# 1. Jalankan MySQL 8.0 via Docker
 docker compose up -d db
 
-# 2. Environment
-cp apps/api/.env.example apps/api/.env   # isi JWT secret: openssl rand -hex 48
+# 2. Salin file environment
+cp apps/api/.env.example apps/api/.env
+# Edit apps/api/.env — isi JWT secret: openssl rand -hex 48
 cp apps/web/.env.example apps/web/.env
 
-# 3. Instal dependensi & migrasi database
+# 3. Instal dependensi & jalankan migrasi database
 pnpm install
 pnpm --filter @tpb/api prisma:migrate
 
@@ -45,26 +78,37 @@ pnpm dev:api    # http://localhost:3000/v1
 pnpm dev:web    # http://localhost:5173
 ```
 
-### Perintah database satu baris
+### Perintah database
 
 ```bash
-pnpm prisma:generate
-pnpm db:migrate
-pnpm db:migrate:create -- nama_migrasi
-pnpm db:migrate:deploy
+pnpm prisma:generate              # Generate Prisma Client
+pnpm db:migrate                   # Buat & terapkan migration development
+pnpm db:migrate:create -- nama    # Buat migration baru tanpa menerapkan
+pnpm db:migrate:deploy            # Terapkan migration yang sudah direview (staging/production)
 ```
 
-`db:migrate` membuat dan menerapkan migration development; `db:migrate:deploy` hanya untuk migration yang sudah direview pada staging/production. Sistem ini tidak memiliki seeder berisi data institusi atau data palsu; bootstrap admin dilakukan melalui halaman `/#admin` saat tabel user kosong.
+- `db:migrate` — membuat dan menerapkan migration development.
+- `db:migrate:deploy` — hanya untuk migration yang sudah direview pada staging/production.
+- Sistem ini **tidak memiliki seeder** berisi data institusi atau data palsu. Bootstrap admin dilakukan melalui halaman `/#admin` saat tabel user kosong.
 
-### Handover hosting
+---
 
-Hosting team menyediakan Node.js ≥20, pnpm, MySQL 8.0, PM2 or another process manager, a persistent writable upload directory, and secrets environment. Deployment dilakukan via **aaPanel** tanpa akses SSH.
+## Deployment via aaPanel Webhook
 
-### aaPanel Webhook Deployment
+Deployment dilakukan melalui **aaPanel Webhook** — tidak ada akses SSH dari GitHub Actions.
 
-Konfigurasi Webhook di aaPanel (Website → Webhooks atau Plugin Webhooks) dengan script bash berikut. Script ini dijalankan otomatis oleh aaPanel setiap kali GitHub Actions memanggil webhook URL.
+### Alur deployment
 
-**Staging** (triggered on push to `develop`):
+| Trigger | Tujuan | Alur |
+|---|---|---|
+| Push ke branch `develop` | Staging | GitHub Actions → POST webhook → aaPanel jalankan script deploy |
+| Push tag `v*` | Production | GitHub Actions → approval manual → POST webhook → aaPanel jalankan script deploy |
+
+### Konfigurasi webhook di aaPanel
+
+Buka **Website → Webhooks** (atau Plugin Webhooks) di aaPanel, lalu masukkan script bash berikut. Script ini dijalankan otomatis oleh aaPanel setiap kali GitHub Actions memanggil URL webhook.
+
+**Script staging** (trigger: push ke `develop`):
 
 ```bash
 set -e
@@ -81,7 +125,7 @@ pm2 reload ecosystem.config.cjs --only tpb-api --update-env || pm2 start ecosyst
 curl --fail --retry 10 --retry-delay 3 http://127.0.0.1:3000/v1/health
 ```
 
-**Production** (triggered on tag `v*`, requires manual approval):
+**Script production** (trigger: tag `v*`, memerlukan approval manual):
 
 ```bash
 set -e
@@ -96,70 +140,166 @@ pm2 reload ecosystem.config.cjs --only tpb-api --update-env || pm2 start ecosyst
 curl --fail --retry 10 --retry-delay 3 http://127.0.0.1:3000/v1/health
 ```
 
-### Secrets & Environment Variables
+> Ganti `/path/to/repo` dengan path absolut direktori repositori di peladen. Ganti `VITE_API_URL` dengan URL API target yang sebenarnya.
 
-**GitHub Secrets** (dikonfigurasi di Settings → Secrets → Actions):
+### GitHub Secrets
+
+Konfigurasi di **Settings → Secrets and variables → Actions**:
 
 | Secret | Keterangan |
 |---|---|
 | `AAPANEL_STAGING_WEBHOOK_URL` | URL webhook aaPanel untuk staging |
 | `AAPANEL_PRODUCTION_WEBHOOK_URL` | URL webhook aaPanel untuk production |
 
-**GitHub Environment Variables** (dikonfigurasi di Settings → Environments):
+### GitHub Environment Variables
 
-| Variable | Environment | Keterangan |
+Konfigurasi di **Settings → Environments**:
+
+| Variabel | Environment | Keterangan |
 |---|---|---|
 | `STAGING_API_URL` | staging | URL API staging, contoh: `https://staging-api.example.test/v1` |
 | `PROD_API_URL` | production | URL API production, contoh: `https://api.example.test/v1` |
 
-Environment `production` harus memiliki protection rule dengan **required reviewers** (approval manual).
+> Environment `production` harus memiliki protection rule dengan **required reviewers** (approval manual).
 
-**Server-side secrets** (dikonfigurasi di aaPanel):
+### Server-side secrets
 
-Sebelum start, provision complete `apps/api/.env` values: `DATABASE_URL`, `JWT_ACCESS_SECRET` (≥32 chars), `CORS_ORIGINS`, `COOKIE_SECURE=true`, `MEDIA_DIR` (absolute, writable, persistent di luar release directory), `TRUST_PROXY`. PM2 file tidak memuat rahasia — hosting harus inject variabel ini sebelum PM2 start/reload.
+Sebelum start, sediakan nilai lengkap `apps/api/.env` di peladen:
 
-Run `pnpm api:preflight` with the same environment before a production restart to fail closed on invalid configuration. Keep `MEDIA_DIR` outside the release directory so a release cleanup cannot remove uploaded files.
+| Variabel | Keterangan |
+|---|---|
+| `DATABASE_URL` | URL koneksi MySQL |
+| `JWT_ACCESS_SECRET` | ≥ 32 karakter |
+| `CORS_ORIGINS` | Domain frontend yang diizinkan |
+| `COOKIE_SECURE` | `true` untuk produksi |
+| `MEDIA_DIR` | Path absolut, dapat ditulis, persisten di luar direktori rilis |
+| `TRUST_PROXY` | Konfigurasi proxy |
 
-Nginx via aaPanel Site Manager harus dikonfigurasi:
+PM2 file tidak memuat rahasia — hosting harus menyuntikkan variabel ini sebelum PM2 start/reload.
 
-- `/` menyajikan `apps/web/dist` sebagai static site.
-- `/v1/` meneruskan request ke API NestJS pada port 3000.
-- `/media/` meneruskan request ke API pada port 3000 (atau ke shared `MEDIA_DIR` bila host memilih static serving langsung).
-- Proxy harus meneruskan cookie dan header `Authorization`, serta mengatur HTTPS di sisi hosting.
+Jalankan `pnpm api:preflight` dengan environment yang sama sebelum restart produksi untuk memastikan konfigurasi valid. Simpan `MEDIA_DIR` di luar direktori rilis agar pembersihan rilis tidak menghapus file yang diunggah.
 
-Cara install: jalankan `bash <(curl -s https://www.aapanel.com/script/install-ubuntu-7.0_en.sh)` lalu ikuti wizard. Setelah aaPanel aktif, install Plugin Website atau Webhooks dari panel. Buat script deploy di atas sebagai webhook script, lalu salin URL webhook-nya ke GitHub Secrets.
+---
 
-Hosting team menyediakan: Node.js ≥20 (install via aaPanel → App Store → Node.js), pnpm (`npm install -g pnpm`), MySQL 8.0 (install via aaPanel → App Store → MySQL), PM2 (`npm install -g pm2`), persistent writable upload directory, dan server environment.
+## Konfigurasi Peladen
 
-For GitHub Actions, configure repository/environment values without placing them in source. The production environment should retain its required manual approval protection rule.
+### aaPanel
 
-Frontend `VITE_API_URL` harus di-build dengan URL target yang benar (bukan localhost) — diatur langsung di script webhook aaPanel saat build.
+1. Jalankan `bash <(curl -s https://www.aapanel.com/script/install-ubuntu-7.0_en.sh)` lalu ikuti wizard.
+2. Setelah aaPanel aktif, instal **Plugin Website** atau **Webhooks** dari panel.
+3. Buat script deploy di atas sebagai webhook script, lalu salin URL webhook-nya ke GitHub Secrets.
+
+### Aplikasi yang harus diinstal via aaPanel
+
+| Aplikasi | Cara instal |
+|---|---|
+| Node.js ≥ 20 | aaPanel → App Store → Node.js |
+| pnpm | `npm install -g pnpm` |
+| MySQL 8.0 | aaPanel → App Store → MySQL |
+| PM2 | `npm install -g pm2` |
+
+### Nginx
+
+Konfigurasi Nginx melalui **aaPanel Site Manager**:
+
+| Rute | Target |
+|---|---|
+| `/` | Sajikan `apps/web/dist` sebagai static site |
+| `/v1/` | Proxy ke API NestJS pada port 3000 |
+| `/media/` | Proxy ke API pada port 3000 (atau sajikan langsung dari `MEDIA_DIR`) |
+
+Proxy harus meneruskan cookie dan header `Authorization`, serta mengatur HTTPS di sisi hosting.
+
+### MEDIA_DIR
+
+Pastikan direktori `MEDIA_DIR`:
+- Dapat ditulis oleh proses Node.js
+- Persisten dan berada di luar direktori rilis
+- Dicadangkan secara terpisah dari database MySQL
+
+---
+
 ## Alur Admin
 
-1. Buka `/#admin` — selama tabel `users` (MySQL) kosong, form **Bootstrap Admin** muncul (sekali pakai; paritas gerbang "akun pertama" sistem lama).
+1. Buka `/#admin` — selama tabel `users` (MySQL) kosong, form **Bootstrap Admin** muncul (sekali pakai; paritas gerbang "akun pertama" dari sistem lama).
 2. Login → dashboard penuh: **Dashboard, Konten Situs, Berita, PMB, Galeri & Media, Pelanggan, Pengguna, Audit Log**.
 3. **Konten Situs harus diisi dari dashboard** — situs publik menampilkan state "belum dikonfigurasi" sampai konten tersimpan di database. Tidak ada fallback/default content di kode (kebijakan: *tidak boleh ada data static inline / fallback / hardcode menempel di file code*).
+
+---
 
 ## Migrasi Data dari Supabase
 
 ```bash
 cd tools/supabase-migration
-SUPABASE_URL=https://<ref>.supabase.co SUPABASE_SERVICE_ROLE_KEY=<key> pnpm export
-pnpm import      # idempoten ke MySQL via DATABASE_URL
-pnpm reconcile   # bandingkan jumlah + checksum MySQL vs manifest
+
+# Export data dari Supabase
+SUPABASE_URL=https://<ref>.supabase.co \
+SUPABASE_SERVICE_ROLE_KEY=<key> pnpm export
+
+# Import ke MySQL (idempoten)
+pnpm import
+
+# Verifikasi: bandingkan jumlah + checksum
+pnpm reconcile
 ```
 
-Service-role key **hanya** lewat environment variable — tidak pernah masuk repo, tidak pernah diekspos ke frontend.
+Service-role key **hanya** melalui variabel environment — tidak pernah masuk repo, tidak pernah diekspos ke frontend.
 
-## Deployment
+---
 
-- **Staging**: push ke branch `develop` → GitHub Actions POST webhook → aaPanel jalankan script deploy staging.
-- **Production**: push tag `v*` → GitHub Environment `production` → approval manual → POST webhook → aaPanel jalankan script deploy production.
-- Frontend memakai `VITE_API_URL` per-environment (staging/produksi berbeda), diatur di script webhook aaPanel.
-- Semua deploy melalui aaPanel Webhook — tidak ada SSH dari GitHub Actions.
 ## Struktur Otentikasi
 
-- JWT access token (15 menit) — di memori frontend, header `Authorization: Bearer`.
-- Refresh token (30 hari) — httpOnly cookie `tpb_refresh`; di database hanya disimpan **sebagai hash** (SHA-256), rotasi saat dipakai, revocation di logout.
-- Role: `ADMIN` (semua), `EDITOR` (konten & berita), `OPERATOR` (PMB & galeri).
-- Bootstrap admin hanya tersedia saat tabel `users` kosong.
+| Komponen | Detail |
+|---|---|
+| Access token | JWT, 15 menit, di memori frontend, header `Authorization: Bearer` |
+| Refresh token | 30 hari, httpOnly cookie `tpb_refresh`; disimpan di database sebagai hash SHA-256, rotasi saat dipakai, revocation di logout |
+| Role | `ADMIN` (semua akses), `EDITOR` (konten & berita), `OPERATOR` (PMB & galeri) |
+| Bootstrap admin | Hanya tersedia saat tabel `users` kosong |
+
+---
+
+## Arsitektur CI/CD
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                    GitHub Actions                         │
+│                                                          │
+│  ┌──────────────────────────────────────────────────┐   │
+│  │ ci.yml (setiap push & PR)                        │   │
+│  │  · contracts build → lint → audit:env             │   │
+│  │  · prisma generate & validate                     │   │
+│  │  · MySQL wait (2 fasa) → migrate → unit tests     │   │
+│  │  · API smoke test → migration verify              │   │
+│  │  · typecheck → build api → build web              │   │
+│  └──────────────────────────────────────────────────┘   │
+│                                                          │
+│  ┌──────────────────────┐  ┌───────────────────────────┐│
+│  │ deploy-staging.yml   │  │ deploy-production.yml     ││
+│  │ push → develop       │  │ push tag v*               ││
+│  │ → POST webhook       │  │ → approval manual         ││
+│  │ → aaPanel deploy     │  │ → POST webhook            ││
+│  │                      │  │ → aaPanel deploy           ││
+│  └──────────────────────┘  └───────────────────────────┘│
+└─────────────────────────────────────────────────────────┘
+                          │
+                          ▼
+┌─────────────────────────────────────────────────────────┐
+│                    Peladen (aaPanel)                      │
+│                                                          │
+│  aaPanel Webhook → Script bash:                          │
+│    git pull → pnpm install → db:migrate:deploy           │
+│    → build contracts → build api → build web             │
+│    → pm2 reload → curl health check                      │
+│                                                          │
+│  Nginx:                                                  │
+│    /       → apps/web/dist (static)                      │
+│    /v1/    → API NestJS :3000                            │
+│    /media/ → API NestJS :3000                            │
+└─────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Lisensi
+
+Proprietary — hak cipta milik UNU Purwokerto.
