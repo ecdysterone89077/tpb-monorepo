@@ -44,14 +44,30 @@ jobs:
 
       - name: Wait for MySQL
         run: |
-          for i in {1..60}; do
+          # Phase 1: wait for Docker healthcheck (root ping)
+          for i in $(seq 1 60); do
             status=$(docker inspect --format='{{.State.Health.Status}}' tpb-mysql 2>/dev/null || true)
-            if [ "$status" = healthy ]; then
+            if [ "$status" = "healthy" ]; then
+              break
+            fi
+            sleep 2
+          done
+          if [ "$status" != "healthy" ]; then
+            docker compose ps
+            docker compose logs db
+            exit 1
+          fi
+          # Phase 2: verify the app user can connect.
+          # MySQL 8.0 init creates a temporary server, then restarts —
+          # root ping may succeed during init, but the app user does not exist yet.
+          for i in $(seq 1 30); do
+            if mysql -h 127.0.0.1 -u tpb -ptpb-dev-password -e "SELECT 1" tpb >/dev/null 2>&1; then
+              echo "MySQL app user ready."
               exit 0
             fi
             sleep 2
           done
-          docker compose ps
+          echo "App user not ready after 60s"
           docker compose logs db
           exit 1
 
@@ -75,7 +91,7 @@ jobs:
           PORT=3000 node apps/api/dist/main.js > /tmp/tpb-api.log 2>&1 &
           api_pid=$!
           trap 'kill $api_pid || true' EXIT
-          for i in {1..30}; do curl --fail --silent http://127.0.0.1:3000/v1/health && exit 0; sleep 2; done
+          for i in $(seq 1 30); do curl --fail --silent http://127.0.0.1:3000/v1/health && exit 0; sleep 2; done
           cat /tmp/tpb-api.log
           exit 1
 
@@ -86,6 +102,7 @@ jobs:
             --to-schema-datamodel prisma/schema.prisma \
             --script) > /tmp/expected-migration.sql
           cmp --silent /tmp/expected-migration.sql apps/api/prisma/migrations/0_init/migration.sql
+
       - name: Typecheck
         run: pnpm -r typecheck
 
